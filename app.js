@@ -203,7 +203,19 @@ async function handleGenerate() {
     state.reasoning = "";
 
     if (contentType.includes("application/json")) {
-      const data = await response.json();
+      let data;
+      try {
+        const text = await response.text();
+        if (!text || !text.trim()) {
+          throw new Error('Resposta vazia do servidor. O workflow pode ter falhado no Merge.');
+        }
+        data = JSON.parse(text);
+      } catch (e) {
+        if (e instanceof SyntaxError) {
+          throw new Error('Resposta inválida do servidor. O workflow pode ter falhado no Merge.');
+        }
+        throw e;
+      }
       state.reasoning = data.reasoning != null ? data.reasoning : "";
       if (data.presentation_base64) {
         const binaryString = atob(data.presentation_base64);
