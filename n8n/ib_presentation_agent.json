@@ -266,7 +266,7 @@
     {
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const items = $input.all();\nconst pptxItem = items.find(i => i.binary && i.binary.data);\nif (!pptxItem) {\n  return [];\n}\nlet reasoning = '';\nlet presentation_title = 'apresentacao';\ntry {\n  const slidesData = $('Extrair JSON dos Slides').first();\n  reasoning = slidesData.json.reasoning || '';\n  presentation_title = slidesData.json.presentation_title || 'apresentacao';\n} catch (e) {\n  const reasoningItem = items.find(i => i.json && i.json.reasoning !== undefined);\n  if (reasoningItem) {\n    reasoning = reasoningItem.json.reasoning || '';\n    presentation_title = reasoningItem.json.presentation_title || 'apresentacao';\n  }\n}\nconst safeTitle = String(presentation_title).replace(/[^a-zA-Z0-9 \\-_]/g, '_').trim() || 'apresentacao';\nconst filename = safeTitle.toLowerCase().endsWith('.pptx') ? safeTitle : safeTitle + '.pptx';\nconst bin = pptxItem.binary.data;\nlet b64;\nif (typeof bin === 'string') {\n  b64 = bin;\n} else if (bin && typeof bin.data === 'string') {\n  b64 = bin.data;\n} else if (bin && bin.data) {\n  b64 = Buffer.from(bin.data).toString('base64');\n} else {\n  return [{ json: { presentation_base64: null, filename, reasoning, error: 'Formato binario inesperado no PPTX.' } }];\n}\nreturn [{ json: { presentation_base64: b64, filename, reasoning } }];"
+        "jsCode": "let reasoning = '';\nlet presentation_title = 'apresentacao';\ntry {\n  const slidesData = $('Extrair JSON dos Slides').first();\n  reasoning = slidesData.json.reasoning || '';\n  presentation_title = slidesData.json.presentation_title || 'apresentacao';\n} catch (e) {}\nconst safeTitle = String(presentation_title).replace(/[^a-zA-Z0-9 \\-_]/g, '_').trim() || 'apresentacao';\nconst filename = safeTitle.toLowerCase().endsWith('.pptx') ? safeTitle : safeTitle + '.pptx';\nconst pptxItem = $input.first();\nif (!pptxItem || !pptxItem.binary || !pptxItem.binary.data) {\n  return [{ json: { presentation_base64: null, filename, reasoning, error: 'PPTX nao gerado. Verifique o servico ou os dados dos slides.' } }];\n}\nlet b64;\ntry {\n  const binaryBuffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n  b64 = binaryBuffer.toString('base64');\n} catch (e) {\n  const bin = pptxItem.binary.data;\n  if (typeof bin === 'string' && bin.length > 100) {\n    b64 = bin;\n  } else if (bin && typeof bin.data === 'string' && bin.data.length > 100) {\n    b64 = bin.data;\n  } else {\n    return [{ json: { presentation_base64: null, filename, reasoning, error: 'Erro ao extrair binario: ' + e.message } }];\n  }\n}\nreturn [{ json: { presentation_base64: b64, filename, reasoning } }];"
       },
       "id": "node-mount-response",
       "name": "Montar resposta webhook",
@@ -375,27 +375,11 @@
             "node": "Gerar PPTX",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Manter reasoning",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
     },
     "Gerar PPTX": {
-      "main": [
-        [
-          {
-            "node": "Montar resposta webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Manter reasoning": {
       "main": [
         [
           {
