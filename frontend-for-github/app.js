@@ -113,14 +113,23 @@ async function handleGenerate() {
     state.reasoning = "";
     if (contentType.includes("application/json")) {
       const data = await response.json();
-      if (data.presentation_base64) {
-        const binaryString = atob(data.presentation_base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-        blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
-        filename = data.filename || "apresentacao.pptx";
-        state.reasoning = data.reasoning || "";
-      } else throw new Error(data.message || data.detail || "Resposta inválida do servidor.");
+      state.reasoning = data.reasoning || "";
+      if (data.error && !data.presentation_base64) {
+        throw new Error(data.error);
+      } else if (data.presentation_base64 && typeof data.presentation_base64 === "string") {
+        try {
+          const cleanB64 = data.presentation_base64.replace(/\s/g, "");
+          const binaryString = atob(cleanB64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+          blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
+          filename = data.filename || "apresentacao.pptx";
+        } catch (decodeErr) {
+          throw new Error("O servidor retornou o arquivo em formato inválido. Tente novamente. (Detalhe: " + decodeErr.message + ")");
+        }
+      } else {
+        throw new Error(data.message || data.error || data.detail || "Resposta inválida do servidor.");
+      }
     } else {
       blob = await response.blob();
       const disposition = response.headers.get("Content-Disposition") || "";
