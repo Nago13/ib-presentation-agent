@@ -1,3 +1,7 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Credenciais e tokens (não versionar)
+scripts/token.json
+scripts/credentials.json

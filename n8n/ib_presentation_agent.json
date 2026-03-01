@@ -1,0 +1,505 @@
+{
+  "name": "IB Presentation Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## IB Presentation Agent\n\n**Como usar:**\n1. Configure as credenciais: Groq API, Serper API, Brapi Token, FMP API Key\n2. Ajuste a URL do microserviço PPTX no node \"Gerar PPTX\"\n3. Ative o workflow\n4. Envie POST para o webhook com prompt + arquivos\n\n**Credenciais necessárias:**\n- Groq API Key (groq.com)\n- Serper API Key (serper.dev)\n- Brapi Token (brapi.dev)\n- FMP API Key (financialmodelingprep.com)",
+        "height": 310,
+        "width": 340,
+        "color": 4
+      },
+      "id": "note-instructions",
+      "name": "Instruções",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        140,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-presentation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        180,
+        480
+      ],
+      "webhookId": "ib-presentation-webhook"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Processar arquivos anexados e extrair dados\nconst items = $input.all();\nlet prompt = '';\nlet attachedData = '';\nlet hasFiles = false;\n\nfor (const item of items) {\n  // Extrair o prompt do body\n  if (item.json.body) {\n    prompt = item.json.body.prompt || item.json.body.message || '';\n  }\n  if (!prompt && item.json.prompt) {\n    prompt = item.json.prompt;\n  }\n\n  // Processar arquivos binários anexados\n  if (item.binary) {\n    for (const [key, binaryData] of Object.entries(item.binary)) {\n      hasFiles = true;\n      const fileName = binaryData.fileName || 'arquivo';\n      const mimeType = binaryData.mimeType || '';\n\n      try {\n        if (mimeType === 'text/csv' || fileName.endsWith('.csv')) {\n          const content = Buffer.from(binaryData.data, 'base64').toString('utf-8');\n          const lines = content.split('\\n').slice(0, 100);\n          attachedData += `\\n\\n=== DADOS DE ${fileName} (CSV) ===\\n${lines.join('\\n')}`;\n          if (content.split('\\n').length > 100) {\n            attachedData += `\\n... (${content.split('\\n').length - 100} linhas adicionais omitidas)`;\n          }\n\n        } else if (mimeType === 'text/plain' || fileName.endsWith('.txt')) {\n          const content = Buffer.from(binaryData.data, 'base64').toString('utf-8');\n          attachedData += `\\n\\n=== DADOS DE ${fileName} (TEXTO) ===\\n${content.substring(0, 5000)}`;\n\n        } else if (mimeType.includes('json') || fileName.endsWith('.json')) {\n          const content = Buffer.from(binaryData.data, 'base64').toString('utf-8');\n          attachedData += `\\n\\n=== DADOS DE ${fileName} (JSON) ===\\n${content.substring(0, 5000)}`;\n\n        } else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')\n                   || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {\n          attachedData += `\\n\\n=== ARQUIVO EXCEL: ${fileName} ===\\n[Arquivo Excel detectado - dados serão processados pelo microserviço]`;\n\n        } else if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {\n          attachedData += `\\n\\n=== ARQUIVO PDF: ${fileName} ===\\n[PDF detectado - texto será extraído pelo microserviço]`;\n\n        } else {\n          attachedData += `\\n\\n=== ARQUIVO: ${fileName} (${mimeType}) ===\\n[Tipo de arquivo não processado diretamente]`;\n        }\n      } catch (e) {\n        attachedData += `\\n\\n=== ERRO ao processar ${fileName}: ${e.message} ===`;\n      }\n    }\n  }\n}\n\nif (!prompt) {\n  throw new Error('Nenhum prompt encontrado. Envie o campo \"prompt\" no body da requisição.');\n}\n\nreturn [{\n  json: {\n    prompt: prompt,\n    attachedData: attachedData || 'Nenhum dado anexado pelo usuário.',\n    hasFiles: hasFiles\n  }\n}];"
+      },
+      "id": "node-process-files",
+      "name": "Processar Arquivos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "options": {
+          "systemMessage": "=Você é um analista sênior de investment banking especializado em criar apresentações executivas de alta qualidade. Você trabalha em um grande banco de investimento e precisa criar apresentações impecáveis.\n\n## SEU OBJETIVO\nReceber um pedido do usuário, pesquisar as informações necessárias usando suas ferramentas, e gerar o conteúdo estruturado de uma apresentação em formato JSON.\n\n## PROCESSO\n1. Analise o pedido: identifique empresa, tópico, período e número de slides desejado\n2. Use as ferramentas para coletar dados (faça pelo menos 2-3 pesquisas diferentes)\n3. Organize as informações coletadas\n4. Gere o JSON da apresentação\n\n## FERRAMENTAS E QUANDO USAR\n\n### pesquisa_web\nBusca na web por notícias, análises, produtos, eventos. Use SEMPRE como primeira pesquisa para contexto geral. Faça múltiplas buscas com termos diferentes.\n\n### cotacoes_brasil\nCotações e indicadores de ações brasileiras da B3. Passe o ticker (ex: ITUB4, PETR4, VALE3). Use quando a empresa for brasileira listada.\n\n### fmp_demonstracao_resultados\nDRE (Income Statement) com receita, lucro, EBITDA, margens. Passe o symbol global (ex: ITUB, AAPL, MSFT). Use para dados financeiros históricos.\n\n### fmp_balanco_patrimonial\nBalanço Patrimonial com ativos, passivos, patrimônio líquido. Passe o symbol global. Use para análise de estrutura de capital.\n\n### fmp_perfil_empresa\nPerfil da empresa com descrição, setor, market cap, beta, múltiplos (P/E, P/B). Passe o symbol global. Use para overview e valuation.\n\n## FORMATO DE SAÍDA\n\nSua resposta final DEVE ter DUAS PARTES, nesta ordem:\n\n1. Bloco de raciocínio: título ## Raciocínio e pesquisas seguido de uma lista CURTA em tópicos (máximo 4-5 bullets) descrevendo ferramentas usadas e resumo dos dados. Seja BREVE — o raciocínio deve ocupar poucas linhas para não estourar o limite de tokens.\n2. Uma linha em branco.\n3. Bloco JSON: o JSON da apresentação dentro de um code block markdown.\n\nExemplo:\n\n## Raciocínio e pesquisas\n\n- Pesquisa web: \"Itaú mobile 2024\" — contexto sobre produtos e notícias.\n- FMP Perfil (ITUB): setor, market cap, múltiplos.\n- FMP DRE (ITUB): receita, EBITDA, margens últimos 3 anos.\n- Dados usados para preencher slides de métricas e tabela.\n\n```json\n{\n  \"presentation_title\": \"Título da Apresentação\",\n  \"slides\": [\n    {\n      \"layout\": \"cover\",\n      \"title\": \"Título Principal\",\n      \"subtitle\": \"Subtítulo Descritivo\",\n      \"date\": \"Mês Ano\"\n    },\n    {\n      \"layout\": \"content\",\n      \"title\": \"Título do Slide\",\n      \"bullets\": [\n        \"Ponto 1 com dados quantitativos\",\n        \"Ponto 2 com métricas relevantes\"\n      ]\n    },\n    {\n      \"layout\": \"two_columns\",\n      \"title\": \"Comparativo\",\n      \"left_column\": {\n        \"subtitle\": \"Coluna Esquerda\",\n        \"bullets\": [\"Item 1\", \"Item 2\"]\n      },\n      \"right_column\": {\n        \"subtitle\": \"Coluna Direita\",\n        \"bullets\": [\"Item 1\", \"Item 2\"]\n      }\n    },\n    {\n      \"layout\": \"table\",\n      \"title\": \"Dados Financeiros\",\n      \"table\": {\n        \"headers\": [\"Métrica\", \"2023\", \"2024\", \"Var %\"],\n        \"rows\": [\n          [\"Receita Líquida\", \"R$ 2,1 bi\", \"R$ 2,8 bi\", \"+33%\"]\n        ]\n      }\n    },\n    {\n      \"layout\": \"chart\",\n      \"title\": \"Evolução da Receita\",\n      \"chart_type\": \"bar\",\n      \"chart_data\": {\n        \"categories\": [\"2021\", \"2022\", \"2023\", \"2024\"],\n        \"series\": [\n          {\"name\": \"Receita (R$ bi)\", \"values\": [1.2, 1.5, 2.1, 2.8]}\n        ]\n      }\n    },\n    {\n      \"layout\": \"key_metrics\",\n      \"title\": \"Indicadores-Chave\",\n      \"metrics\": [\n        {\"label\": \"Receita\", \"value\": \"R$ 2,8 bi\", \"variation\": \"+33% YoY\"},\n        {\"label\": \"EBITDA\", \"value\": \"R$ 890 mi\", \"variation\": \"+28% YoY\"}\n      ]\n    },\n    {\n      \"layout\": \"closing\",\n      \"title\": \"Obrigado\",\n      \"subtitle\": \"Informações de contato\"\n    }\n  ]\n}\n```\n\n## LAYOUTS DISPONÍVEIS\n- **cover**: Slide de capa (título, subtítulo, data)\n- **content**: Conteúdo com bullet points (3-6 bullets, máx 2 linhas cada)\n- **two_columns**: Duas colunas comparativas\n- **table**: Tabela de dados financeiros\n- **chart**: Gráfico (tipos: bar, line, pie, stacked_bar)\n- **key_metrics**: Métricas em destaque com variação\n- **closing**: Slide de encerramento\n\n## DIRETRIZES DE CONTEÚDO IB\n- Linguagem profissional e concisa\n- SEMPRE inclua dados quantitativos (%, R$, variações YoY/QoQ)\n- Métricas padrão: Receita, EBITDA, Lucro Líquido, Margem EBITDA, ROE, ROIC\n- Formate valores: R$ X,X bi / R$ XXX mi / US$ X,X bi\n- Variações sempre com sinal: +15,3% ou -8,2%\n- Cada bullet: máximo 2 linhas, direto ao ponto\n- Primeiro slide sempre \"cover\", último sempre \"closing\"\n- Inclua pelo menos 1 slide de tabela ou chart com dados reais\n- IMPORTANTE: Gere no máximo 6-7 slides no total. Isso garante que o JSON completo caiba na resposta.\n- Priorize COMPLETAR o JSON inteiro. É melhor ter menos slides completos do que muitos slides com JSON cortado.",
+          "maxIterations": 15
+        },
+        "text": "={{ $json.prompt }}\n\n{{ $json.hasFiles ? '## DADOS ANEXADOS PELO USUÁRIO\\n' + $json.attachedData : '' }}"
+      },
+      "id": "node-ai-agent",
+      "name": "AI Agent IB",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        700,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.3,
+          "maxTokensToSample": 16000
+        }
+      },
+      "id": "node-groq-model",
+      "name": "Groq Llama 3.3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        520,
+        280
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "CONFIGURE_GROQ_CREDENTIAL",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "pesquisa_web",
+        "description": "Pesquisa na web por informações sobre empresas, produtos, notícias, análises de mercado e dados qualitativos. Use para contexto geral, notícias recentes e informações que não estão em APIs financeiras. Parâmetro: query (o termo de busca em português ou inglês).",
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": false,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ q: $fromAI('query', 'Termo de busca para pesquisar na web', 'string'), gl: 'br', hl: 'pt-br', num: 10 }) }}"
+      },
+      "id": "node-tool-serper",
+      "name": "Pesquisa Web",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        360,
+        700
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_SERPER_CREDENTIAL",
+          "name": "Serper API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "cotacoes_brasil",
+        "description": "Obtém cotações, indicadores fundamentalistas e dividendos de ações brasileiras listadas na B3. Parâmetro: ticker (código da ação, ex: ITUB4, PETR4, VALE3, BBDC4, WEGE3). Use quando a empresa for brasileira.",
+        "method": "GET",
+        "url": "=https://brapi.dev/api/quote/{{ $fromAI('ticker', 'Ticker da ação brasileira na B3 (ex: ITUB4, PETR4)', 'string') }}?range=1y&interval=1mo&fundamental=true&dividends=true",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": false,
+        "sendBody": false
+      },
+      "id": "node-tool-brapi",
+      "name": "Cotações Brasil",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        540,
+        700
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BRAPI_CREDENTIAL",
+          "name": "Brapi Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "fmp_demonstracao_resultados",
+        "description": "Obtém a Demonstração de Resultados (DRE / Income Statement) de uma empresa. Retorna: receita, custo, lucro bruto, EBITDA, lucro líquido, margens, EPS. Últimos 3 anos anuais. Parâmetro: symbol (ticker global, ex: ITUB para Itaú, AAPL para Apple, MSFT para Microsoft).",
+        "method": "GET",
+        "url": "=https://financialmodelingprep.com/api/v3/income-statement/{{ $fromAI('symbol', 'Símbolo/ticker global da empresa (ex: ITUB, AAPL, MSFT)', 'string') }}?period=annual&limit=3&apikey={{ $env.FMP_API_KEY }}",
+        "authentication": "none",
+        "sendHeaders": false,
+        "sendBody": false
+      },
+      "id": "node-tool-fmp-income",
+      "name": "FMP Demonstração Resultados",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "name": "fmp_balanco_patrimonial",
+        "description": "Obtém o Balanço Patrimonial (Balance Sheet) de uma empresa. Retorna: ativos totais, passivos, patrimônio líquido, caixa, dívida, capital de giro. Últimos 3 anos. Parâmetro: symbol (ticker global, ex: ITUB, AAPL).",
+        "method": "GET",
+        "url": "=https://financialmodelingprep.com/api/v3/balance-sheet-statement/{{ $fromAI('symbol', 'Símbolo/ticker global da empresa (ex: ITUB, AAPL, MSFT)', 'string') }}?period=annual&limit=3&apikey={{ $env.FMP_API_KEY }}",
+        "authentication": "none",
+        "sendHeaders": false,
+        "sendBody": false
+      },
+      "id": "node-tool-fmp-balance",
+      "name": "FMP Balanço Patrimonial",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "name": "fmp_perfil_empresa",
+        "description": "Obtém o perfil completo da empresa: descrição, setor, indústria, market cap, número de funcionários, CEO, e múltiplos de valuation (P/E, P/B, beta, dividend yield). Parâmetro: symbol (ticker global, ex: ITUB, AAPL).",
+        "method": "GET",
+        "url": "=https://financialmodelingprep.com/api/v3/profile/{{ $fromAI('symbol', 'Símbolo/ticker global da empresa (ex: ITUB, AAPL, MSFT)', 'string') }}?apikey={{ $env.FMP_API_KEY }}",
+        "authentication": "none",
+        "sendHeaders": false,
+        "sendBody": false
+      },
+      "id": "node-tool-fmp-profile",
+      "name": "FMP Perfil Empresa",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1080,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const agentOutput = $input.first().json.output || $input.first().json.text || '';\nif (!agentOutput || agentOutput.length < 10) {\n  throw new Error('Saida do agente vazia. Tamanho: ' + agentOutput.length);\n}\nlet reasoning = '';\nfunction extractReasoning(text, splitPos) {\n  if (splitPos <= 0) return '';\n  const before = text.substring(0, splitPos).trim();\n  const title = '## Raciocinio e pesquisas';\n  const titleAlt = '## Racioc\\u00ednio e pesquisas';\n  let r = before;\n  if (r.includes(title)) r = r.replace(title, '');\n  if (r.includes(titleAlt)) r = r.replace(titleAlt, '');\n  return r.replace(/^\\s+/, '').trim();\n}\nfunction tryParse(str) {\n  if (!str || str.length < 5) return null;\n  try { return JSON.parse(str); } catch (e) { return null; }\n}\nfunction sanitize(s) {\n  let t = s;\n  t = t.replace(/,([\\s\\r\\n]*[}\\]])/g, '$1');\n  return t;\n}\nfunction repairTruncated(str) {\n  if (!str || str.length < 10) return null;\n  let s = str.trim();\n  s = s.replace(/,?\\s*\"[^\"]*$/g, '');\n  s = s.replace(/,?\\s*\"[^\"]*\"\\s*:\\s*$/g, '');\n  s = s.replace(/,\\s*$/g, '');\n  const stack = [];\n  let inStr = false;\n  let esc = false;\n  for (let i = 0; i < s.length; i++) {\n    const c = s[i];\n    if (esc) { esc = false; continue; }\n    if (c === '\\\\') { esc = true; continue; }\n    if (c === '\"') { inStr = !inStr; continue; }\n    if (inStr) continue;\n    if (c === '{') stack.push('}');\n    else if (c === '[') stack.push(']');\n    else if (c === '}' || c === ']') stack.pop();\n  }\n  while (stack.length > 0) s += stack.pop();\n  return tryParse(s);\n}\nfunction extractByBraces(text) {\n  let startIdx = -1;\n  const ptIdx = text.indexOf('\"presentation_title\"');\n  const slIdx = text.indexOf('\"slides\"');\n  const keyIdx = ptIdx >= 0 ? (slIdx >= 0 ? Math.min(ptIdx, slIdx) : ptIdx) : slIdx;\n  if (keyIdx >= 0) {\n    for (let i = keyIdx; i >= 0; i--) {\n      if (text[i] === '{') { startIdx = i; break; }\n    }\n  }\n  if (startIdx === -1) {\n    for (let i = 0; i < text.length; i++) {\n      if (text[i] === '{') { startIdx = i; break; }\n    }\n  }\n  if (startIdx === -1) return '';\n  let depth = 0;\n  let endIdx = text.length;\n  for (let i = startIdx; i < text.length; i++) {\n    if (text[i] === '{' || text[i] === '[') depth++;\n    else if (text[i] === '}' || text[i] === ']') {\n      depth--;\n      if (depth === 0) { endIdx = i + 1; break; }\n    }\n  }\n  return text.substring(startIdx, endIdx);\n}\nlet endReasoning = agentOutput.length;\nconst i1 = agentOutput.indexOf('```');\nif (i1 >= 0 && i1 < endReasoning) endReasoning = i1;\nconst i2 = agentOutput.indexOf(']son');\nif (i2 >= 0 && i2 < endReasoning) endReasoning = i2;\nconst i3 = agentOutput.indexOf('{\"presentation_title\"');\nif (i3 >= 0 && i3 < endReasoning) endReasoning = i3;\nconst i4 = agentOutput.indexOf('{\"slides\"');\nif (i4 >= 0 && i4 < endReasoning) endReasoning = i4;\nreasoning = extractReasoning(agentOutput, endReasoning);\nlet normalized = agentOutput.replace(/\\\"]son/g, ' ').replace(/\\\"]json/g, ' ').replace(/\"json\\s*/g, ' ').replace(/']son/g, ' ');\nlet rawJson = '';\nlet parsed = null;\nconst codeBlockRe = /```(?:json)?[\\s\\n]*([\\s\\S]+?)[\\s\\n]*```/;\nconst cbMatch = normalized.match(codeBlockRe);\nif (cbMatch && cbMatch[1] && cbMatch[1].trim().length > 5) {\n  rawJson = cbMatch[1].trim();\n  parsed = tryParse(sanitize(rawJson));\n  if (!parsed) {\n    let fixed = rawJson.replace(/'([^']*)'\\s*:/g, '\"$1\":');\n    fixed = fixed.replace(/:\\s*'([^']*)'/g, ': \"$1\"');\n    parsed = tryParse(sanitize(fixed));\n  }\n  if (!parsed) {\n    const allSingle = rawJson.replace(/'/g, '\"');\n    parsed = tryParse(sanitize(allSingle));\n  }\n}\nif (!parsed) {\n  rawJson = extractByBraces(normalized);\n  if (rawJson) {\n    parsed = tryParse(sanitize(rawJson));\n    if (!parsed) {\n      let fixed = rawJson.replace(/'([^']*)'\\s*:/g, '\"$1\":');\n      fixed = fixed.replace(/:\\s*'([^']*)'/g, ': \"$1\"');\n      parsed = tryParse(sanitize(fixed));\n    }\n    if (!parsed) {\n      const allSingle = rawJson.replace(/'/g, '\"');\n      parsed = tryParse(sanitize(allSingle));\n    }\n  }\n}\nif (!parsed) {\n  parsed = tryParse(sanitize(normalized));\n}\nif (!parsed && rawJson && rawJson.length > 20) {\n  parsed = repairTruncated(sanitize(rawJson));\n}\nif (!parsed) {\n  const last200 = rawJson.length > 200 ? rawJson.substring(rawJson.length - 200) : rawJson;\n  const dbg = 'agentOutput.length=' + agentOutput.length + ' rawJson.length=' + rawJson.length + ' primeiros 400: ' + normalized.substring(0, 400) + ' | ultimos 200 rawJson: ' + last200;\n  throw new Error('Nenhum JSON valido encontrado. ' + dbg);\n}\nconst slidesJson = parsed;\nif (!slidesJson.slides || !Array.isArray(slidesJson.slides)) {\n  throw new Error('JSON invalido: campo slides nao encontrado ou nao e array');\n}\nif (slidesJson.slides.length === 0) {\n  throw new Error('JSON invalido: array de slides vazio');\n}\nfor (let i = 0; i < slidesJson.slides.length; i++) {\n  if (!slidesJson.slides[i].layout) {\n    throw new Error('Slide ' + (i+1) + ' sem campo layout');\n  }\n}\nreturn [{ json: { ...slidesJson, reasoning: reasoning || '' } }];"
+      },
+      "id": "node-extract-json",
+      "name": "Extrair JSON dos Slides",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ib-pptx-service.onrender.com/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ presentation_title: $json.presentation_title, slides: $json.slides }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "node-generate-pptx",
+      "name": "Gerar PPTX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1260,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first();\nreturn [{ json: { reasoning: item.json.reasoning || '', presentation_title: item.json.presentation_title || 'apresentacao' } }];"
+      },
+      "id": "node-keep-reasoning",
+      "name": "Manter reasoning",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst pptxItem = items.find(i => i.binary && i.binary.data);\nconst reasoningItem = items.find(i => i.json && i.json.reasoning !== undefined);\nconst reasoning = reasoningItem && reasoningItem.json && (reasoningItem.json.reasoning != null) ? reasoningItem.json.reasoning : '';\nconst presentation_title = reasoningItem && reasoningItem.json && reasoningItem.json.presentation_title ? reasoningItem.json.presentation_title : 'apresentacao';\nconst safeTitle = String(presentation_title).replace(/[^a-zA-Z0-9 \\-_]/g, '_').trim() || 'apresentacao';\nconst filename = safeTitle.toLowerCase().endsWith('.pptx') ? safeTitle : safeTitle + '.pptx';\nconst bin = pptxItem && pptxItem.binary && pptxItem.binary.data;\nif (!bin) {\n  return [{ json: { presentation_base64: null, filename, reasoning, error: 'PPTX nao gerado. Verifique o servico ou os dados dos slides.' } }];\n}\nlet b64;\nif (typeof bin === 'string') {\n  b64 = bin;\n} else if (bin && typeof bin.data === 'string') {\n  b64 = bin.data;\n} else if (bin && bin.data) {\n  b64 = Buffer.from(bin.data).toString('base64');\n} else {\n  return [{ json: { presentation_base64: null, filename, reasoning, error: 'Formato binario inesperado no PPTX.' } }];\n}\nreturn [{ json: { presentation_base64: b64, filename, reasoning } }];"
+      },
+      "id": "node-mount-response",
+      "name": "Montar resposta webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-respond",
+      "name": "Retornar Apresentação",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## APIs Financeiras - Credenciais\n\n**Serper (Web Search):**\nCrie credencial \"Header Auth\" com:\n- Name: X-API-KEY\n- Value: sua_chave_serper\n\n**Brapi (Ações BR):**\nCrie credencial \"Header Auth\" com:\n- Name: Authorization\n- Value: Bearer seu_token_brapi\n\n**FMP (Financials):**\nConfigure a variável de ambiente FMP_API_KEY no N8N com sua chave da API.\nOs 3 nodes FMP usam {{ $env.FMP_API_KEY }}.\nObtenha a chave em: financialmodelingprep.com",
+        "height": 340,
+        "width": 340,
+        "color": 6
+      },
+      "id": "note-credentials",
+      "name": "Credenciais APIs",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        520,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Microserviço PPTX\n\nO node \"Gerar PPTX\" envia o JSON\npara um microserviço FastAPI + python-pptx\nrodando em http://localhost:8000\n\nAjuste a URL conforme seu deploy.\nVeja a pasta pptx-service/ para\no código do microserviço.",
+        "height": 220,
+        "width": 300,
+        "color": 5
+      },
+      "id": "note-pptx-service",
+      "name": "Nota Microserviço",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        920,
+        80
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Processar Arquivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Arquivos": {
+      "main": [
+        [
+          {
+            "node": "AI Agent IB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent IB": {
+      "main": [
+        [
+          {
+            "node": "Extrair JSON dos Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair JSON dos Slides": {
+      "main": [
+        [
+          {
+            "node": "Gerar PPTX",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Manter reasoning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar PPTX": {
+      "main": [
+        [
+          {
+            "node": "Montar resposta webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manter reasoning": {
+      "main": [
+        [
+          {
+            "node": "Montar resposta webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar resposta webhook": {
+      "main": [
+        [
+          {
+            "node": "Retornar Apresentação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Llama 3.3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent IB",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pesquisa Web": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent IB",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cotações Brasil": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent IB",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FMP Demonstração Resultados": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent IB",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FMP Balanço Patrimonial": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent IB",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FMP Perfil Empresa": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent IB",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "investment-banking",
+      "id": "tag-ib"
+    },
+    {
+      "name": "ai-agent",
+      "id": "tag-ai"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-28T00:00:00.000Z",
+  "versionId": "1"
+}

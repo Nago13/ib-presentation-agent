@@ -1,0 +1,26 @@
+## REGRAS DE FORMATAÇÃO IB (Extraídas de 2 apresentações de exemplo, 153 slides)
+
+### Dimensões
+- Slide: 26.67" x 15.0" (widescreen 16:9)
+
+### Tipografia
+- Fontes usadas: Inter SemiBold, Inter Bold, Inter Regular
+- Títulos: Montserrat 30.0pt bold, cor #7F7F7F
+- Corpo: Inter 13.8pt bold, cor #7F7F7F
+
+### Paleta de Cores
+- Backgrounds: Não identificado
+- Cores de preenchimento (shapes): #FFFFFF, #3C3C3C, #B3B5BB, #D9DADD, #58595C, #BDBFC4
+- Cores de texto: #7F7F7F, #F2F2F2, #262626, #FFFFFF, #0F4D88, #980000
+
+### Tamanhos de Fonte Encontrados
+- 150.0pt, 60.0pt, 40.0pt, 36.0pt, 34.0pt, 30.0pt, 25.0pt, 24.0pt, 13.8pt
+
+### Layouts de Slide Encontrados
+- 1_Business model, 1_Business model – Dark, 1_Business model – Grey, 1_Competitors, 1_Competitors – Dark, 1_Competitors – Grey, 1_Financial projections (Master), 1_Financial projections (Master) – Dark, 1_Financial projections (Master) – Grey, 1_Founding team, 1_Founding team – Dark, 1_Founding team – Grey, 1_Go-to-market, 1_Problem 1, 1_Problem 1 – Dark, 1_Problem 1 – Grey, 1_Product 1, 1_Product 1 – Dark, 1_Product 1 – Grey, 1_Roadmap, 1_Roadmap – Dark, 1_Roadmap – Grey, 1_Solution 1, 1_Solution 1 – Dark, 1_Solution 1 – Grey, 2_Founding team, 2_Founding team – Dark, 2_Founding team – Grey, 2_Go-to-market, 2_Problem 1, 2_Problem 1 – Dark, 2_Problem 1 – Grey, 2_Quote – Dark, 2_Quote – Grey, 2_Roadmap, 2_Roadmap – Dark, 2_Roadmap – Grey, 2_Solution 1, 2_Solution 1 – Dark, 2_Solution 1 – Grey, 2_Table of contents, 2_Table of contents – Dark, 2_Table of contents – Grey, 3_Go-to-market, 3_Problem 1, 3_Problem 1 – Dark, 3_Problem 1 – Grey, 3_Quote – Dark, 3_Quote – Grey, 3_Roadmap, 3_Roadmap – Dark, 3_Roadmap – Grey, 4_Go-to-market, 4_Problem 1, 4_Problem 1 – Dark, 4_Problem 1 – Grey, 4_Product 1, 4_Product 1 – Dark, 4_Product 1 – Grey, 4_Quote – Dark, 4_Quote – Grey, 5_Product 1, 5_Product 1 – Dark, 5_Product 1 – Grey, 5_Quote – Dark, 5_Quote – Grey, 6_Problem 1, 6_Problem 1 – Dark, 6_Problem 1 – Grey, Bigger team, Bigger team – Dark, Bigger team – Grey, Blank, Blank – Dark, Blank – Grey, Business model, Business model – Dark, Business model – Grey, Competitors, Competitors – Dark, Competitors – Grey, Disclaimer, Disclaimer – Dark, Disclaimer – Grey, Founding team, Founding team – Dark, Founding team – Grey, Go-to-market, Go-to-market – Dark, Go-to-market – Grey, Intro, Intro – Dark, Intro – Grey, Market validation, Market validation – Dark, Market validation – Grey, Next step, Next step – Dark, Next step – Grey, Pricing, Pricing – Dark, Pricing – Grey, Problem 1, Problem 1 – Dark, Problem 1 – Grey, Product 1, Product 1 – Dark, Product 1 – Grey, Quote, Quote – Dark, Quote – Grey, Roadmap, Roadmap – Dark, Roadmap – Grey, Section header, Section header - Dark, Section header – Grey, Solution 1, Solution 1 – Dark, Solution 1 – Grey, Table of contents, Table of contents – Dark, Table of contents – Grey, Thank you, Thank you – Dark, Thank you – Grey, The ask, The ask – Dark, The ask – Grey, Total Addressable Market, Total Addressable Market – Dark, Total Addressable Market – Grey, Value proposition, Value proposition – Dark, Value proposition – Grey
+
+### Diretrizes Gerais
+- Mantenha consistência visual com as cores e fontes acima
+- Títulos sempre na fonte e tamanho especificados
+- Corpo do texto no tamanho e cor especificados
+- Use a paleta de cores para gráficos, tabelas e destaques
