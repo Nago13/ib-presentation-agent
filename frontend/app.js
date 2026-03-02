@@ -219,7 +219,12 @@ async function handleGenerate() {
     state.reasoning = data.reasoning != null ? data.reasoning : "";
 
     if (data.error && !data.slides_url) {
-      responseError = data.error;
+      const err = data.error;
+      responseError = typeof err === "string"
+        ? err
+        : (err && (err.detail || err.message || err.error))
+          ? String(err.detail || err.message || err.error)
+          : "Erro ao gerar apresentação.";
     } else if (data.slides_url) {
       state.slidesUrl = data.slides_url;
       state.sheetsUrl = data.sheets_url || null;
