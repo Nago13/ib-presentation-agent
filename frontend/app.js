@@ -5,8 +5,8 @@
 const CONFIG = {
   // URL do webhook N8N - use a Production URL quando o workflow estiver ativo
   webhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation",
-  // URL do microserviço PPTX (para health check; só funciona se o serviço estiver acessível na internet)
-  pptxServiceUrl: "http://localhost:8000",
+  // URL do microserviço PPTX/Google Slides (para health check no Render)
+  pptxServiceUrl: "https://ib-pptx-service.onrender.com",
 };
 
 // ============================================
