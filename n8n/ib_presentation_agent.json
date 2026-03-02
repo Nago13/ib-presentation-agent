@@ -217,7 +217,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://ib-pptx-service.onrender.com/generate",
+        "url": "https://ib-pptx-service.onrender.com/generate-slides",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -231,17 +231,11 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ presentation_title: $json.presentation_title, slides: $json.slides }) }}",
         "options": {
-          "response": {
-            "response": {
-              "responseFormat": "file",
-              "outputPropertyName": "data"
-            }
-          },
-          "timeout": 60000
+          "timeout": 120000
         }
       },
       "id": "node-generate-pptx",
-      "name": "Gerar PPTX",
+      "name": "Gerar Google Slides",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -266,7 +260,7 @@
     {
       "parameters": {
         "language": "javaScript",
-        "jsCode": "let reasoning = '';\nlet presentation_title = 'apresentacao';\ntry {\n  const slidesData = $('Extrair JSON dos Slides').first();\n  reasoning = slidesData.json.reasoning || '';\n  presentation_title = slidesData.json.presentation_title || 'apresentacao';\n} catch (e) {}\nconst safeTitle = String(presentation_title).replace(/[^a-zA-Z0-9 \\-_]/g, '_').trim() || 'apresentacao';\nconst filename = safeTitle.toLowerCase().endsWith('.pptx') ? safeTitle : safeTitle + '.pptx';\nconst pptxItem = $input.first();\nif (!pptxItem || !pptxItem.binary || !pptxItem.binary.data) {\n  return [{ json: { presentation_base64: null, filename, reasoning, error: 'PPTX nao gerado. Verifique o servico ou os dados dos slides.' } }];\n}\nlet b64;\ntry {\n  const binaryBuffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n  b64 = binaryBuffer.toString('base64');\n} catch (e) {\n  const bin = pptxItem.binary.data;\n  if (typeof bin === 'string' && bin.length > 100) {\n    b64 = bin;\n  } else if (bin && typeof bin.data === 'string' && bin.data.length > 100) {\n    b64 = bin.data;\n  } else {\n    return [{ json: { presentation_base64: null, filename, reasoning, error: 'Erro ao extrair binario: ' + e.message } }];\n  }\n}\nreturn [{ json: { presentation_base64: b64, filename, reasoning } }];"
+        "jsCode": "let reasoning = '';\nlet presentation_title = 'apresentacao';\ntry {\n  const slidesData = $('Extrair JSON dos Slides').first();\n  reasoning = slidesData.json.reasoning || '';\n  presentation_title = slidesData.json.presentation_title || 'apresentacao';\n} catch (e) {}\n\nconst item = $input.first();\nconst data = item.json || {};\n\nconst slides_url = data.slides_url || null;\nconst sheets_url = data.sheets_url || null;\n\nif (!slides_url) {\n  return [{ json: {\n    slides_url: null,\n    sheets_url: null,\n    presentation_title,\n    reasoning,\n    error: data.detail || data.error || 'Google Slides nao gerado. Verifique as credenciais e o servico.'\n  }}];\n}\n\nreturn [{ json: {\n  slides_url,\n  sheets_url,\n  presentation_title: data.presentation_title || presentation_title,\n  reasoning\n}}];"
       },
       "id": "node-mount-response",
       "name": "Montar resposta webhook",
@@ -319,7 +313,7 @@
     },
     {
       "parameters": {
-        "content": "## Microserviço PPTX\n\nO node \"Gerar PPTX\" envia o JSON\npara um microserviço FastAPI + python-pptx\nrodando em http://localhost:8000\n\nAjuste a URL conforme seu deploy.\nVeja a pasta pptx-service/ para\no código do microserviço.",
+        "content": "## Microserviço Google Slides\n\nO node \"Gerar Google Slides\" envia o JSON\npara o microserviço FastAPI que cria\nGoogle Slides + Sheets via API.\n\nEndpoint: POST /generate-slides\nRetorna: { slides_url, sheets_url }\n\nRequer GOOGLE_APPLICATION_CREDENTIALS\nconfigurado no servidor.",
         "height": 220,
         "width": 300,
         "color": 5
@@ -372,14 +366,14 @@
       "main": [
         [
           {
-            "node": "Gerar PPTX",
+            "node": "Gerar Google Slides",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Gerar PPTX": {
+    "Gerar Google Slides": {
       "main": [
         [
           {

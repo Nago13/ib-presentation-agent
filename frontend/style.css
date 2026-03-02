@@ -622,6 +622,17 @@ body {
   transform: translateY(-1px);
 }
 
+.result-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.sheets-btn {
+  background: #0f4d88;
+}
+
 .new-btn {
   display: block;
   margin: 16px auto 0;

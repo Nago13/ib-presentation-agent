@@ -16,6 +16,8 @@ const CONFIG = {
 const state = {
   files: [],
   generating: false,
+  slidesUrl: null,
+  sheetsUrl: null,
   resultBlob: null,
   resultFilename: "",
   reasoning: "",
@@ -38,7 +40,8 @@ const progressSteps = $("#progress-steps");
 const resultCard = $("#result-card");
 const resultInfo = $("#result-info");
 const resultReasoning = $("#result-reasoning");
-const downloadBtn = $("#download-btn");
+const openSlidesBtn = $("#open-slides-btn");
+const openSheetsBtn = $("#open-sheets-btn");
 const newBtn = $("#new-btn");
 const errorCard = $("#error-card");
 const errorMessage = $("#error-message");
@@ -196,81 +199,54 @@ async function handleGenerate() {
       throw new Error(detail);
     }
 
-    const contentType = response.headers.get("Content-Type") || "";
-    let blob;
-    let filename = "apresentacao.pptx";
+    let data;
     let responseError = null;
     state.reasoning = "";
 
-    if (contentType.includes("application/json")) {
-      let data;
-      try {
-        const text = await response.text();
-        if (!text || !text.trim()) {
-          throw new Error('Resposta vazia do servidor. O workflow pode ter falhado no Merge.');
-        }
-        data = JSON.parse(text);
-      } catch (e) {
-        if (e instanceof SyntaxError) {
-          throw new Error('Resposta inválida do servidor. O workflow pode ter falhado no Merge.');
-        }
-        throw e;
+    try {
+      const text = await response.text();
+      if (!text || !text.trim()) {
+        throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
       }
-      state.reasoning = data.reasoning != null ? data.reasoning : "";
-      if (data.error && !data.presentation_base64) {
-        responseError = data.error;
-      } else if (data.presentation_base64 && typeof data.presentation_base64 === "string") {
-        try {
-          const cleanB64 = data.presentation_base64.replace(/\s/g, "");
-          const binaryString = atob(cleanB64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          blob = new Blob([bytes], {
-            type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          });
-          filename = data.filename || "apresentacao.pptx";
-        } catch (decodeErr) {
-          throw new Error(
-            "O servidor retornou o arquivo em formato inválido. " +
-            "Tente novamente. (Detalhe: " + decodeErr.message + ")"
-          );
-        }
-      } else if (data.error) {
-        responseError = data.error;
-      } else {
-        throw new Error(data.message || data.detail || "Resposta inválida do servidor.");
+      data = JSON.parse(text);
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        throw new Error("Resposta inválida do servidor. O workflow pode ter falhado.");
       }
-    } else {
-      blob = await response.blob();
-      const disposition = response.headers.get("Content-Disposition") || "";
-      const filenameMatch = disposition.match(/filename="?([^";\n]+)"?/);
-      filename = filenameMatch ? filenameMatch[1] : "apresentacao.pptx";
+      throw e;
     }
 
-    state.resultBlob = blob;
-    state.resultFilename = filename;
+    state.reasoning = data.reasoning != null ? data.reasoning : "";
+
+    if (data.error && !data.slides_url) {
+      responseError = data.error;
+    } else if (data.slides_url) {
+      state.slidesUrl = data.slides_url;
+      state.sheetsUrl = data.sheets_url || null;
+    } else {
+      throw new Error(data.message || data.detail || "Resposta inválida do servidor.");
+    }
 
     completeProgress();
 
     setTimeout(() => {
       showSection("result");
-      const infoEl = resultInfo;
       if (responseError) {
-        infoEl.textContent = "Erro: " + responseError;
-        infoEl.classList.add("result-info-error");
+        resultInfo.textContent = "Erro: " + responseError;
+        resultInfo.classList.add("result-info-error");
+        openSlidesBtn.style.display = "none";
+        openSheetsBtn.style.display = "none";
       } else {
-        infoEl.textContent = state.resultBlob
-          ? `${filename} - ${formatFileSize(state.resultBlob.size)}`
-          : filename;
-        infoEl.classList.remove("result-info-error");
+        const title = data.presentation_title || "Apresentação";
+        resultInfo.textContent = title + " — pronta no Google Slides";
+        resultInfo.classList.remove("result-info-error");
+        openSlidesBtn.style.display = "";
+        openSheetsBtn.style.display = state.sheetsUrl ? "" : "none";
       }
       if (resultReasoning) {
         resultReasoning.textContent = state.reasoning || "Nenhum raciocínio disponível.";
         resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
       }
-      downloadBtn.style.display = state.resultBlob ? "" : "none";
     }, 600);
 
   } catch (error) {
@@ -335,19 +311,15 @@ function updateSteps(activeStep) {
 }
 
 // ============================================
-// Download
+// Open Links
 // ============================================
 
-downloadBtn.addEventListener("click", () => {
-  if (!state.resultBlob) return;
-  const url = URL.createObjectURL(state.resultBlob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = state.resultFilename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+openSlidesBtn.addEventListener("click", () => {
+  if (state.slidesUrl) window.open(state.slidesUrl, "_blank");
+});
+
+openSheetsBtn.addEventListener("click", () => {
+  if (state.sheetsUrl) window.open(state.sheetsUrl, "_blank");
 });
 
 // ============================================
@@ -364,6 +336,8 @@ retryBtn.addEventListener("click", () => {
 
 function resetUI() {
   showSection("form");
+  state.slidesUrl = null;
+  state.sheetsUrl = null;
   state.resultBlob = null;
   state.resultFilename = "";
   state.reasoning = "";
@@ -371,7 +345,8 @@ function resetUI() {
     resultReasoning.textContent = "";
     resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
   }
-  downloadBtn.style.display = "";
+  openSlidesBtn.style.display = "";
+  openSheetsBtn.style.display = "none";
   clearInterval(progressInterval);
   progressBar.style.width = "0%";
   updateSteps(0);

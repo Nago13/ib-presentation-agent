@@ -5,3 +5,5 @@ Thumbs.db
 # Credenciais e tokens (não versionar)
 scripts/token.json
 scripts/credentials.json
+pptx-service/credentials/
+*.service-account.json
