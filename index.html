@@ -133,10 +133,16 @@
             <h4 class="result-reasoning-title">Raciocínio e pesquisas do agente</h4>
             <div class="result-reasoning-text" id="result-reasoning"></div>
           </div>
-          <button class="download-btn" id="download-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Baixar .pptx
-          </button>
+          <div class="result-actions">
+            <button class="download-btn" id="open-slides-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+              Abrir Apresentação
+            </button>
+            <button class="download-btn sheets-btn" id="open-sheets-btn" style="display:none;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+              Editar Dados (Sheets)
+            </button>
+          </div>
           <button class="new-btn" id="new-btn">Criar outra apresentação</button>
         </section>
 
