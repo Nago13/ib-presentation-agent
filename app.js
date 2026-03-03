@@ -5,6 +5,7 @@
 const CONFIG = {
   // URL do webhook N8N - use a Production URL quando o workflow estiver ativo
   webhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation",
+  marketResearchWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/market-research",
   // URL do microserviço PPTX/Google Slides (para health check no Render)
   pptxServiceUrl: "https://ib-pptx-service.onrender.com",
 };
@@ -21,6 +22,9 @@ const state = {
   resultBlob: null,
   resultFilename: "",
   reasoning: "",
+  currentView: "presentation",
+  researchSheetsUrl: null,
+  reportUrl: null,
 };
 
 // ============================================
@@ -47,6 +51,60 @@ const errorCard = $("#error-card");
 const errorMessage = $("#error-message");
 const retryBtn = $("#retry-btn");
 const apiStatus = $("#api-status");
+const headerTitle = $(".header-title");
+const headerSubtitle = $(".header-subtitle");
+const viewPresentation = $("#view-presentation");
+const viewMarketResearch = $("#view-market-research");
+const researchTopicInput = $("#research-topic-input");
+const researchExecuteBtn = $("#research-execute-btn");
+const openResearchSheetsBtn = $("#open-research-sheets-btn");
+const openReportBtn = $("#open-report-btn");
+const resultActionsPresentation = $("#result-actions-presentation");
+const resultActionsResearch = $("#result-actions-research");
+
+// ============================================
+// Sidebar Navigation / View Switching
+// ============================================
+
+function showView(view) {
+  state.currentView = view;
+  document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("active"));
+  const navId = view === "presentation" ? "nav-presentation" : view === "market-research" ? "nav-market-research" : "nav-history";
+  $(`#${navId}`)?.classList.add("active");
+
+  if (view === "presentation") {
+    viewPresentation?.classList.remove("hidden");
+    viewMarketResearch?.classList.add("hidden");
+    if (headerTitle) headerTitle.textContent = "Nova Apresentação";
+    if (headerSubtitle) headerSubtitle.textContent = "Descreva a apresentação desejada e o agente fará o resto";
+  } else if (view === "market-research") {
+    viewPresentation?.classList.add("hidden");
+    viewMarketResearch?.classList.remove("hidden");
+    if (headerTitle) headerTitle.textContent = "Pesquisa de Mercado";
+    if (headerSubtitle) headerSubtitle.textContent = "Coletar dados de mercado, consolidar em planilhas e gerar relatórios estruturados";
+  }
+
+  if (sectionState === "form") {
+    showSection("form");
+  }
+}
+
+let sectionState = "form";
+
+$("#nav-presentation")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("presentation");
+});
+
+$("#nav-market-research")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("market-research");
+});
+
+$("#nav-history")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  // Histórico - placeholder, sem implementação
+});
 
 // ============================================
 // Prompt Hints
@@ -159,6 +217,134 @@ function escapeHtml(str) {
 
 generateBtn.addEventListener("click", handleGenerate);
 
+// ============================================
+// Market Research
+// ============================================
+
+researchExecuteBtn?.addEventListener("click", handleMarketResearchSubmit);
+
+async function handleMarketResearchSubmit() {
+  const topic = researchTopicInput?.value.trim();
+  if (!topic) {
+    researchTopicInput?.focus();
+    researchTopicInput.style.boxShadow = "0 0 0 3px rgba(194, 32, 32, 0.15)";
+    researchTopicInput.style.borderColor = "#c22020";
+    setTimeout(() => {
+      researchTopicInput.style.boxShadow = "";
+      researchTopicInput.style.borderColor = "";
+    }, 2000);
+    return;
+  }
+
+  state.generating = true;
+  setResearchProgressSteps();
+  showSection("progress");
+  researchExecuteBtn.disabled = true;
+
+  try {
+    const period = $("#research-period")?.value || "12";
+    const sources = $("#research-sources")?.value || "";
+    const body = JSON.stringify({ topic, period, sources });
+
+    simulateProgress("research");
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+    const response = await fetch(CONFIG.marketResearchWebhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let detail = `Erro ${response.status}`;
+      const text = await response.text();
+      try {
+        if (text?.trim()) {
+          const errData = JSON.parse(text);
+          detail = errData.message || errData.detail || errData.error || detail;
+        } else if (response.status === 504) {
+          detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        } else if (response.status >= 500) {
+          detail = "Erro interno do servidor. Tente novamente.";
+        }
+      } catch {
+        if (response.status === 504) detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        else if (response.status >= 500) detail = "Erro interno do servidor. Tente novamente.";
+      }
+      throw new Error(detail);
+    }
+
+    let data;
+    const text = await response.text();
+    if (!text?.trim()) throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Timeout: o workflow demorou mais de 5 minutos. Tente novamente.");
+      throw new Error("Resposta inválida do servidor. Tente novamente.");
+    }
+
+    const rawData = data.body && typeof data.body === "object" ? data.body : data.data && typeof data.data === "object" ? data.data : data;
+    state.researchSheetsUrl = rawData.sheets_url || data.sheets_url || null;
+    state.reportUrl = rawData.report_url || data.report_url || null;
+    state.reasoning = rawData.reasoning ?? data.reasoning ?? "";
+
+    if (data.error && !state.researchSheetsUrl) {
+      throw new Error(data.error?.detail || data.error?.message || data.error || "Erro ao gerar pesquisa.");
+    }
+
+    completeProgress();
+    setTimeout(() => {
+      showSection("result");
+      resultActionsPresentation?.classList.add("hidden");
+      resultActionsResearch?.classList.remove("hidden");
+      const title = rawData.report_title || data.report_title || "Pesquisa de Mercado";
+      resultInfo.textContent = title + (state.researchSheetsUrl ? " — planilha consolidada pronta" : "");
+      resultInfo.classList.remove("result-info-error");
+      openResearchSheetsBtn.style.display = state.researchSheetsUrl ? "" : "none";
+      openReportBtn.style.display = state.reportUrl ? "" : "none";
+      $(".result-title").textContent = "Pesquisa Concluída";
+      newBtn.textContent = "Nova pesquisa";
+      if (resultReasoning) {
+        resultReasoning.textContent = state.reasoning || "Nenhum raciocínio disponível.";
+        resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
+      }
+    }, 600);
+  } catch (error) {
+    showSection("error");
+    errorMessage.textContent = error.message || "Erro desconhecido ao executar a pesquisa.";
+  } finally {
+    state.generating = false;
+    researchExecuteBtn.disabled = false;
+  }
+}
+
+function setResearchProgressSteps() {
+  const steps = progressSteps?.querySelectorAll(".step");
+  if (!steps || steps.length < 4) return;
+  const labels = ["Coletando dados...", "Consolidando informações...", "Gerando relatório...", "Finalizando..."];
+  steps.forEach((step, i) => {
+    const label = step.querySelector(".step-label");
+    if (label) label.textContent = labels[i] || label.textContent;
+  });
+  progressTitle.textContent = "Coletando dados...";
+}
+
+function setPresentationProgressSteps() {
+  const steps = progressSteps?.querySelectorAll(".step");
+  if (!steps || steps.length < 4) return;
+  const labels = ["Analisando prompt", "Pesquisando dados", "Gerando conteúdo", "Criando slides"];
+  steps.forEach((step, i) => {
+    const label = step.querySelector(".step-label");
+    if (label) label.textContent = labels[i] || label.textContent;
+  });
+}
+
 async function handleGenerate() {
   const prompt = promptInput.value.trim();
   if (!prompt) {
@@ -173,6 +359,7 @@ async function handleGenerate() {
   }
 
   state.generating = true;
+  setPresentationProgressSteps();
   showSection("progress");
   generateBtn.disabled = true;
 
@@ -181,7 +368,7 @@ async function handleGenerate() {
     formData.append("prompt", prompt);
     state.files.forEach((file) => formData.append("files", file));
 
-    simulateProgress();
+    simulateProgress("presentation");
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
@@ -254,6 +441,10 @@ async function handleGenerate() {
 
     setTimeout(() => {
       showSection("result");
+      resultActionsPresentation?.classList.remove("hidden");
+      resultActionsResearch?.classList.add("hidden");
+      $(".result-title").textContent = "Apresentação Gerada";
+      newBtn.textContent = "Criar outra apresentação";
       if (responseError) {
         resultInfo.textContent = "Erro: " + responseError;
         resultInfo.classList.add("result-info-error");
@@ -287,15 +478,12 @@ async function handleGenerate() {
 
 let progressInterval = null;
 
-function simulateProgress() {
+function simulateProgress(mode = "presentation") {
   let progress = 0;
   let currentStep = 1;
-  const titles = [
-    "Analisando seu pedido...",
-    "Pesquisando dados financeiros...",
-    "Gerando conteúdo dos slides...",
-    "Criando a apresentação...",
-  ];
+  const titles = mode === "research"
+    ? ["Coletando dados...", "Consolidando informações...", "Gerando relatório...", "Finalizando..."]
+    : ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
 
   progressBar.style.width = "0%";
   updateSteps(1);
@@ -345,6 +533,14 @@ openSheetsBtn.addEventListener("click", () => {
   if (state.sheetsUrl) window.open(state.sheetsUrl, "_blank");
 });
 
+openResearchSheetsBtn?.addEventListener("click", () => {
+  if (state.researchSheetsUrl) window.open(state.researchSheetsUrl, "_blank");
+});
+
+openReportBtn?.addEventListener("click", () => {
+  if (state.reportUrl) window.open(state.reportUrl, "_blank");
+});
+
 // ============================================
 // Reset / Retry
 // ============================================
@@ -352,8 +548,10 @@ openSheetsBtn.addEventListener("click", () => {
 newBtn.addEventListener("click", resetUI);
 retryBtn.addEventListener("click", () => {
   resetUI();
-  if (promptInput.value.trim()) {
+  if (state.currentView === "presentation" && promptInput.value.trim()) {
     handleGenerate();
+  } else if (state.currentView === "market-research" && researchTopicInput?.value.trim()) {
+    handleMarketResearchSubmit();
   }
 });
 
@@ -361,18 +559,25 @@ function resetUI() {
   showSection("form");
   state.slidesUrl = null;
   state.sheetsUrl = null;
+  state.researchSheetsUrl = null;
+  state.reportUrl = null;
   state.resultBlob = null;
   state.resultFilename = "";
   state.reasoning = "";
-  if (resultReasoning) {
-    resultReasoning.textContent = "";
-    resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
-  }
+  if (resultReasoning) resultReasoning.textContent = "";
+  resultReasoning?.closest(".result-reasoning-wrap")?.classList.add("hidden");
   openSlidesBtn.style.display = "";
   openSheetsBtn.style.display = "none";
+  openResearchSheetsBtn && (openResearchSheetsBtn.style.display = "none");
+  openReportBtn && (openReportBtn.style.display = "none");
+  resultActionsPresentation?.classList.remove("hidden");
+  resultActionsResearch?.classList.add("hidden");
+  $(".result-title").textContent = "Apresentação Gerada";
+  newBtn.textContent = "Criar outra apresentação";
   clearInterval(progressInterval);
   progressBar.style.width = "0%";
   updateSteps(0);
+  setPresentationProgressSteps();
 }
 
 // ============================================
@@ -380,16 +585,18 @@ function resetUI() {
 // ============================================
 
 function showSection(section) {
+  sectionState = section;
   progressCard.classList.add("hidden");
   resultCard.classList.add("hidden");
   errorCard.classList.add("hidden");
 
-  const formElements = document.querySelectorAll(".prompt-card, .upload-card, .generate-btn");
-
   if (section === "form") {
-    formElements.forEach((el) => el.classList.remove("hidden"));
+    viewPresentation?.classList.remove("hidden");
+    viewMarketResearch?.classList.remove("hidden");
+    showView(state.currentView);
   } else {
-    formElements.forEach((el) => el.classList.add("hidden"));
+    viewPresentation?.classList.add("hidden");
+    viewMarketResearch?.classList.add("hidden");
     if (section === "progress") progressCard.classList.remove("hidden");
     else if (section === "result") resultCard.classList.remove("hidden");
     else if (section === "error") errorCard.classList.remove("hidden");
