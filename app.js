@@ -591,8 +591,6 @@ function showSection(section) {
   errorCard.classList.add("hidden");
 
   if (section === "form") {
-    viewPresentation?.classList.remove("hidden");
-    viewMarketResearch?.classList.remove("hidden");
     showView(state.currentView);
   } else {
     viewPresentation?.classList.add("hidden");

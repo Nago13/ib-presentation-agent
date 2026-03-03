@@ -22,6 +22,10 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
           Nova Apresentação
         </a>
+        <a href="#" class="nav-item" id="nav-slides-prompt">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          Apresentação por Slides
+        </a>
         <a href="#" class="nav-item" id="nav-market-research">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           Pesquisa de Mercado
@@ -98,6 +102,27 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
           Gerar Apresentação
         </button>
+        </div>
+
+        <!-- View: Apresentação por Slides -->
+        <div class="view-content view-slides-prompt hidden" id="view-slides-prompt">
+          <section class="card prompt-card">
+            <label class="card-label">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Conteúdo dos Slides
+            </label>
+            <textarea
+              id="slides-prompt-input"
+              class="prompt-textarea"
+              placeholder="SLIDE 1 — COVER&#10;Headline: Título da Apresentação&#10;Subheadline: Subtítulo descritivo&#10;Strictly Confidential — Mês Ano&#10;&#10;SLIDE 2 — NOME DO SLIDE&#10;Headline: Título do slide&#10;Body: Parágrafos e bullets com o conteúdo...&#10;&#10;SLIDE 3 — COMPARATIVO&#10;Headline: Título&#10;Left column: item A, item B...&#10;Right column: item C, item D..."
+              rows="12"
+            ></textarea>
+            <p class="prompt-hint-text">Defina cada slide com Headline, Subheadline, Body, Left/Right column, ou tabelas (Term | Detail).</p>
+          </section>
+          <button class="generate-btn" id="slides-generate-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
+            Gerar Apresentação
+          </button>
         </div>
 
         <!-- View: Pesquisa de Mercado -->
