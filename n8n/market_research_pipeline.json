@@ -1,0 +1,224 @@
+{
+  "name": "Market Research Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Market Research Pipeline\n\n**Fluxo:** Webhook recebe topic/period/sources → Pesquisa Serper → Estrutura dados → Google Sheets → Retorna sheets_url.\n\n**Credenciais:** Serper (Header Auth X-API-KEY), Google Sheets OAuth2.\n\nConfigure a path do webhook: market-research",
+        "height": 220,
+        "width": 320,
+        "color": 4
+      },
+      "id": "note-instructions",
+      "name": "Instruções",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [120, 80]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "market-research",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 400],
+      "webhookId": "market-research-webhook"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first();\nconst raw = item.json || {};\nconst body = raw.body && typeof raw.body === 'object' ? raw.body : raw;\nconst topic = (body.topic || body.message || '').toString().trim();\nif (!topic || topic.length < 2) {\n  throw new Error('Campo \"topic\" obrigatório. Envie um tópico de pesquisa.');\n}\nconst period = (body.period || '12').toString();\nconst sources = (body.sources || '').toString();\nreturn [{ json: { topic, period, sources } }];"
+      },
+      "id": "node-parse",
+      "name": "Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ q: $json.topic, gl: 'br', hl: 'pt-br', num: 10 }) }}",
+        "options": {}
+      },
+      "id": "node-serper",
+      "name": "Serper Web Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_SERPER_CREDENTIAL",
+          "name": "Serper API Key"
+        }
+      },
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const parseData = $('Parse Request').first().json;\nconst topic = parseData.topic || 'Pesquisa';\nconst serperItem = $input.first();\nconst serperData = serperItem.json || {};\nconst organic = Array.isArray(serperData.organic) ? serperData.organic : [];\n\nconst title = 'Pesquisa: ' + topic.substring(0, 60);\nlet reasoning = 'Pesquisa executada sobre \"' + topic + '\". Fontes: Serper (web). ';\n\nconst rows = [['Fonte', 'Título', 'Resumo', 'Link']];\nfor (let i = 0; i < Math.min(organic.length, 20); i++) {\n  const o = organic[i];\n  rows.push([\n    'Serper',\n    (o.title || '').substring(0, 100),\n    (o.snippet || '').substring(0, 200),\n    (o.link || '').substring(0, 150)\n  ]);\n}\nif (organic.length === 0) {\n  rows.push(['N/A', 'Nenhum resultado encontrado', '', '']);\n}\n\nreasoning += organic.length + ' resultados consolidados.';\n\nreturn [{ json: { title, reasoning, rows } }];"
+      },
+      "id": "node-structure",
+      "name": "Estruturar Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "title": "={{ $json.title }}",
+        "options": {}
+      },
+      "id": "node-sheets-create",
+      "name": "Criar Planilha",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1120, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets account"
+        }
+      },
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const struct = $('Estruturar Dados').first().json;\nconst createOut = $input.first().json;\nconst spreadsheetId = createOut.spreadsheetId || createOut.id;\nconst rows = struct.rows || [];\nconst items = [];\nfor (let i = 0; i < rows.length; i++) {\n  items.push({ json: { spreadsheetId, col1: rows[i][0] || '', col2: rows[i][1] || '', col3: rows[i][2] || '', col4: rows[i][3] || '' } });\n}\nreturn items.length > 0 ? items : [{ json: { spreadsheetId, col1: 'Fonte', col2: 'Título', col3: 'Resumo', col4: 'Link' } }];"
+      },
+      "id": "node-rows-to-items",
+      "name": "Rows to Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.spreadsheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "A": "={{ $json.col1 }}",
+            "B": "={{ $json.col2 }}",
+            "C": "={{ $json.col3 }}",
+            "D": "={{ $json.col4 }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "node-sheets-append",
+      "name": "Preencher Planilha",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets account"
+        }
+      },
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const struct = $('Estruturar Dados').first().json;\nlet createOutput = null;\ntry {\n  createOutput = $('Criar Planilha').first().json;\n} catch (e) {}\n\nconst spreadsheetId = createOutput?.spreadsheetId || createOutput?.id;\nlet sheetsUrl = null;\nif (spreadsheetId) {\n  sheetsUrl = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/edit';\n}\n\nreturn [{ json: {\n  sheets_url: sheetsUrl,\n  report_url: sheetsUrl,\n  report_title: struct.title,\n  reasoning: struct.reasoning || '',\n  error: !sheetsUrl ? 'Planilha não criada. Configure credenciais Google Sheets no n8n.' : null\n}}];"
+      },
+      "id": "node-mount-response",
+      "name": "Montar resposta webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-respond",
+      "name": "Retornar Pesquisa",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1960, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Parse Request", "type": "main", "index": 0 }]]
+    },
+    "Parse Request": {
+      "main": [[{ "node": "Serper Web Search", "type": "main", "index": 0 }]]
+    },
+    "Serper Web Search": {
+      "main": [[{ "node": "Estruturar Dados", "type": "main", "index": 0 }]]
+    },
+    "Estruturar Dados": {
+      "main": [[{ "node": "Criar Planilha", "type": "main", "index": 0 }]]
+    },
+    "Criar Planilha": {
+      "main": [[{ "node": "Rows to Items", "type": "main", "index": 0 }]]
+    },
+    "Rows to Items": {
+      "main": [[{ "node": "Preencher Planilha", "type": "main", "index": 0 }]]
+    },
+    "Preencher Planilha": {
+      "main": [[{ "node": "Montar resposta webhook", "type": "main", "index": 0 }]]
+    },
+    "Montar resposta webhook": {
+      "main": [[{ "node": "Retornar Pesquisa", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [
+    { "name": "market-research", "id": "tag-mr" }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-02T00:00:00.000Z",
+  "versionId": "1"
+}
