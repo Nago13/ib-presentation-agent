@@ -3,16 +3,11 @@
 // ============================================
 
 const CONFIG = {
-  // URL do webhook N8N - use a Production URL quando o workflow estiver ativo
   webhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation",
+  slidesPromptWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation-from-slides",
   marketResearchWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/market-research",
-  // URL do microserviço PPTX/Google Slides (para health check no Render)
   pptxServiceUrl: "https://ib-pptx-service.onrender.com",
 };
-
-// ============================================
-// State
-// ============================================
 
 const state = {
   files: [],
@@ -27,10 +22,6 @@ const state = {
   reportUrl: null,
   researchAnalysisSlides: null,
 };
-
-// ============================================
-// DOM References
-// ============================================
 
 const $ = (sel) => document.querySelector(sel);
 const promptInput = $("#prompt-input");
@@ -66,23 +57,25 @@ const resultAnalysisWrap = $("#result-analysis-wrap");
 const resultAnalysisText = $("#result-analysis-text");
 const copyAnalysisBtn = $("#copy-analysis-btn");
 
-// ============================================
-// Sidebar Navigation / View Switching
-// ============================================
-
 function showView(view) {
   state.currentView = view;
   document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("active"));
-  const navId = view === "presentation" ? "nav-presentation" : view === "market-research" ? "nav-market-research" : "nav-history";
-  $(`#${navId}`)?.classList.add("active");
+  const navMap = {
+    presentation: "nav-presentation",
+    "market-research": "nav-market-research",
+    history: "nav-history",
+  };
+  $(`#${navMap[view] || "nav-presentation"}`)?.classList.add("active");
+
+  viewPresentation?.classList.add("hidden");
+  viewMarketResearch?.classList.add("hidden");
 
   if (view === "presentation") {
     viewPresentation?.classList.remove("hidden");
-    viewMarketResearch?.classList.add("hidden");
+    updatePromptUIForMode();
     if (headerTitle) headerTitle.textContent = "Nova Apresentação";
-    if (headerSubtitle) headerSubtitle.textContent = "Descreva a apresentação desejada e o agente fará o resto";
+    if (headerSubtitle) headerSubtitle.textContent = "Descreva a apresentação desejada ou defina o conteúdo de cada slide";
   } else if (view === "market-research") {
-    viewPresentation?.classList.add("hidden");
     viewMarketResearch?.classList.remove("hidden");
     if (headerTitle) headerTitle.textContent = "Pesquisa de Mercado";
     if (headerSubtitle) headerSubtitle.textContent = "Coletar dados de mercado, consolidar em planilhas e gerar relatórios estruturados";
@@ -107,12 +100,7 @@ $("#nav-market-research")?.addEventListener("click", (e) => {
 
 $("#nav-history")?.addEventListener("click", (e) => {
   e.preventDefault();
-  // Histórico - placeholder, sem implementação
 });
-
-// ============================================
-// Prompt Hints
-// ============================================
 
 document.querySelectorAll(".hint").forEach((hint) => {
   hint.addEventListener("click", () => {
@@ -122,10 +110,6 @@ document.querySelectorAll(".hint").forEach((hint) => {
     promptInput.style.height = promptInput.scrollHeight + "px";
   });
 });
-
-// ============================================
-// File Upload
-// ============================================
 
 dropzone.addEventListener("click", () => fileInput.click());
 
@@ -215,15 +199,36 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ============================================
-// Generate Presentation
-// ============================================
-
 generateBtn.addEventListener("click", handleGenerate);
 
-// ============================================
-// Market Research
-// ============================================
+function getPresentationMode() {
+  return document.querySelector('input[name="presentation-mode"]:checked')?.value || "agent";
+}
+
+function updatePromptUIForMode() {
+  const mode = getPresentationMode();
+  const hints = $("#prompt-hints");
+  const slidesHint = $("#slides-mode-hint");
+  if (mode === "slides") {
+    promptInput.placeholder = promptInput.dataset.placeholderSlides || "";
+    promptInput.rows = 12;
+    hints?.classList.add("hidden");
+    slidesHint?.classList.remove("hidden");
+    $("#prompt-label-text").textContent = "Conteúdo dos slides";
+  } else {
+    promptInput.placeholder = promptInput.dataset.placeholderAgent || "";
+    promptInput.rows = 5;
+    hints?.classList.remove("hidden");
+    slidesHint?.classList.add("hidden");
+    $("#prompt-label-text").textContent = "Prompt";
+  }
+  promptInput.style.height = "auto";
+  promptInput.style.height = Math.min(promptInput.scrollHeight, mode === "slides" ? 600 : 300) + "px";
+}
+
+document.querySelectorAll('input[name="presentation-mode"]').forEach((radio) => {
+  radio.addEventListener("change", updatePromptUIForMode);
+});
 
 researchExecuteBtn?.addEventListener("click", handleMarketResearchSubmit);
 
@@ -371,22 +376,37 @@ async function handleGenerate() {
     return;
   }
 
+  const isSlidesMode = getPresentationMode() === "slides";
+  const webhookUrl = isSlidesMode ? CONFIG.slidesPromptWebhookUrl : CONFIG.webhookUrl;
+  const formField = isSlidesMode ? "slides_prompt" : "prompt";
+
   state.generating = true;
-  setPresentationProgressSteps();
+  if (isSlidesMode) {
+    const steps = progressSteps?.querySelectorAll(".step");
+    if (steps?.length >= 4) {
+      const labels = ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."];
+      steps.forEach((step, i) => {
+        const label = step.querySelector(".step-label");
+        if (label) label.textContent = labels[i] || label.textContent;
+      });
+    }
+  } else {
+    setPresentationProgressSteps();
+  }
   showSection("progress");
   generateBtn.disabled = true;
 
   try {
     const formData = new FormData();
-    formData.append("prompt", prompt);
+    formData.append(formField, prompt);
     state.files.forEach((file) => formData.append("files", file));
 
-    simulateProgress("presentation");
+    simulateProgress(isSlidesMode ? "slides-prompt" : "presentation");
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
 
-    const response = await fetch(CONFIG.webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       body: formData,
       signal: controller.signal,
@@ -416,9 +436,10 @@ async function handleGenerate() {
     let data;
     let responseError = null;
     state.reasoning = "";
+    let text = "";
 
     try {
-      const text = await response.text();
+      text = await response.text();
       if (!text || !text.trim()) {
         throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
       }
@@ -485,10 +506,6 @@ async function handleGenerate() {
   }
 }
 
-// ============================================
-// Progress Simulation
-// ============================================
-
 let progressInterval = null;
 
 function simulateProgress(mode = "presentation") {
@@ -496,7 +513,9 @@ function simulateProgress(mode = "presentation") {
   let currentStep = 1;
   const titles = mode === "research"
     ? ["Coletando dados...", "Consolidando informações...", "Gerando relatório...", "Finalizando..."]
-    : ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
+    : mode === "slides-prompt"
+      ? ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."]
+      : ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
 
   progressBar.style.width = "0%";
   updateSteps(1);
@@ -534,10 +553,6 @@ function updateSteps(activeStep) {
   });
 }
 
-// ============================================
-// Open Links
-// ============================================
-
 openSlidesBtn.addEventListener("click", () => {
   if (state.slidesUrl) window.open(state.slidesUrl, "_blank");
 });
@@ -567,16 +582,12 @@ copyAnalysisBtn?.addEventListener("click", async () => {
   }
 });
 
-// ============================================
-// Reset / Retry
-// ============================================
-
 newBtn.addEventListener("click", resetUI);
 retryBtn.addEventListener("click", () => {
   resetUI();
   if (state.currentView === "presentation" && promptInput.value.trim()) {
     handleGenerate();
-  } else if (state.currentView === "market-research" && researchTopicInput?.value.trim()) {
+  } else if (state.currentView === "market-research" && researchTopicInput?.value?.trim()) {
     handleMarketResearchSubmit();
   }
 });
@@ -608,10 +619,6 @@ function resetUI() {
   setPresentationProgressSteps();
 }
 
-// ============================================
-// Section Visibility
-// ============================================
-
 function showSection(section) {
   sectionState = section;
   progressCard.classList.add("hidden");
@@ -628,10 +635,6 @@ function showSection(section) {
     else if (section === "error") errorCard.classList.remove("hidden");
   }
 }
-
-// ============================================
-// API Health Check
-// ============================================
 
 async function checkApiStatus() {
   const dot = apiStatus.querySelector(".status-dot");
@@ -661,11 +664,8 @@ async function checkApiStatus() {
 checkApiStatus();
 setInterval(checkApiStatus, 30000);
 
-// ============================================
-// Textarea Auto-resize
-// ============================================
-
 promptInput.addEventListener("input", () => {
+  const maxH = getPresentationMode() === "slides" ? 600 : 300;
   promptInput.style.height = "auto";
-  promptInput.style.height = Math.min(promptInput.scrollHeight, 300) + "px";
+  promptInput.style.height = Math.min(promptInput.scrollHeight, maxH) + "px";
 });

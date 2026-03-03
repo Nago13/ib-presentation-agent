@@ -56,21 +56,34 @@
         <div class="view-content view-presentation" id="view-presentation">
         <!-- Prompt Section -->
         <section class="card prompt-card">
+          <div class="prompt-mode-toggle">
+            <label class="mode-option">
+              <input type="radio" name="presentation-mode" value="agent" checked>
+              <span>Agente pesquisa e gera</span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="presentation-mode" value="slides">
+              <span>Eu defino o conteúdo de cada slide</span>
+            </label>
+          </div>
           <label class="card-label">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            Prompt
+            <span id="prompt-label-text">Prompt</span>
           </label>
           <textarea
             id="prompt-input"
             class="prompt-textarea"
             placeholder="Ex: Faça uma apresentação de 8 slides sobre os produtos Mobile do Itaú em 2024, incluindo métricas financeiras, análise competitiva e evolução da receita digital."
             rows="5"
+            data-placeholder-agent="Ex: Faça uma apresentação de 8 slides sobre os produtos Mobile do Itaú em 2024, incluindo métricas financeiras, análise competitiva e evolução da receita digital."
+            data-placeholder-slides="SLIDE 1 — COVER&#10;Headline: Título da Apresentação&#10;Subheadline: Subtítulo&#10;Strictly Confidential — Mês Ano&#10;&#10;SLIDE 2 — NOME DO SLIDE&#10;Headline: Título&#10;Body: Parágrafos e bullets...&#10;&#10;SLIDE 3 — COMPARATIVO&#10;Headline: Título&#10;Left column: item A, B...&#10;Right column: item C, D..."
           ></textarea>
-          <div class="prompt-hints">
+          <div class="prompt-hints" id="prompt-hints">
             <span class="hint" data-prompt="Faça uma apresentação de 8 slides sobre os resultados financeiros da Petrobras em 2024">Resultados Petrobras</span>
             <span class="hint" data-prompt="Crie uma apresentação de 6 slides comparando os bancos digitais no Brasil: Nubank, Inter e C6 Bank">Comps Bancos Digitais</span>
             <span class="hint" data-prompt="Apresentação de 10 slides sobre o mercado de energia renovável no Brasil, com foco em eólica e solar">Energia Renovável BR</span>
           </div>
+          <p class="prompt-hint-text hidden" id="slides-mode-hint">Defina cada slide com Headline, Body, Left/Right column ou tabelas (Term | Detail).</p>
         </section>
 
         <!-- File Upload Section -->
