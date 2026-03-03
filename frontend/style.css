@@ -322,6 +322,23 @@ body {
 }
 
 /* Research options (Pesquisa de Mercado) */
+.contract-fields input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color var(--transition);
+}
+.contract-fields input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+.contract-fields input::placeholder {
+  color: var(--text-muted);
+}
+
 .research-options {
   display: flex;
   gap: 24px;

@@ -7,6 +7,7 @@ const CONFIG = {
   webhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation",
   slidesPromptWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation-from-slides",
   marketResearchWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/market-research",
+  contractAutomationWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/contract-automation",
   // URL do microserviço PPTX/Google Slides (para health check no Render)
   pptxServiceUrl: "https://ib-pptx-service.onrender.com",
 };
@@ -27,6 +28,9 @@ const state = {
   researchSheetsUrl: null,
   reportUrl: null,
   researchAnalysisSlides: null,
+  docUrl: null,
+  downloadUrl: null,
+  docTitle: null,
 };
 
 // ============================================
@@ -63,6 +67,8 @@ const openResearchSheetsBtn = $("#open-research-sheets-btn");
 const openReportBtn = $("#open-report-btn");
 const resultActionsPresentation = $("#result-actions-presentation");
 const resultActionsResearch = $("#result-actions-research");
+const resultActionsContracts = $("#result-actions-contracts");
+const viewContracts = $("#view-contracts");
 const resultAnalysisWrap = $("#result-analysis-wrap");
 const resultAnalysisText = $("#result-analysis-text");
 const copyAnalysisBtn = $("#copy-analysis-btn");
@@ -77,12 +83,14 @@ function showView(view) {
   const navMap = {
     presentation: "nav-presentation",
     "market-research": "nav-market-research",
+    contracts: "nav-contracts",
     history: "nav-history",
   };
   $(`#${navMap[view] || "nav-presentation"}`)?.classList.add("active");
 
   viewPresentation?.classList.add("hidden");
   viewMarketResearch?.classList.add("hidden");
+  viewContracts?.classList.add("hidden");
 
   if (view === "presentation") {
     viewPresentation?.classList.remove("hidden");
@@ -93,6 +101,10 @@ function showView(view) {
     viewMarketResearch?.classList.remove("hidden");
     if (headerTitle) headerTitle.textContent = "Pesquisa de Mercado";
     if (headerSubtitle) headerSubtitle.textContent = "Coletar dados de mercado, consolidar em planilhas e gerar relatórios estruturados";
+  } else if (view === "contracts") {
+    viewContracts?.classList.remove("hidden");
+    if (headerTitle) headerTitle.textContent = "Automação de Contratos";
+    if (headerSubtitle) headerSubtitle.textContent = "Gerar minutas em Google Docs ou Word a partir de templates e dados do cliente";
   }
 
   if (sectionState === "form") {
@@ -110,6 +122,11 @@ $("#nav-presentation")?.addEventListener("click", (e) => {
 $("#nav-market-research")?.addEventListener("click", (e) => {
   e.preventDefault();
   showView("market-research");
+});
+
+$("#nav-contracts")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("contracts");
 });
 
 $("#nav-history")?.addEventListener("click", (e) => {
@@ -260,6 +277,138 @@ function updatePromptUIForMode() {
 document.querySelectorAll('input[name="presentation-mode"]').forEach((radio) => {
   radio.addEventListener("change", updatePromptUIForMode);
 });
+
+// ============================================
+// Contract Automation
+// ============================================
+
+const contractTemplateId = $("#contract-template-id");
+const contractGenerateBtn = $("#contract-generate-btn");
+const openContractDocBtn = $("#open-contract-doc-btn");
+const openContractDownloadBtn = $("#open-contract-download-btn");
+
+contractGenerateBtn?.addEventListener("click", handleContractSubmit);
+
+async function handleContractSubmit() {
+  const templateId = contractTemplateId?.value.trim();
+  const clienteNome = $("#contract-cliente-nome")?.value.trim();
+  const clienteEmail = $("#contract-cliente-email")?.value.trim();
+  if (!templateId || templateId.length < 5) {
+    contractTemplateId?.focus();
+    contractTemplateId.style.boxShadow = "0 0 0 3px rgba(194, 32, 32, 0.15)";
+    setTimeout(() => { contractTemplateId.style.boxShadow = ""; }, 2000);
+    return;
+  }
+  if (!clienteNome || !clienteEmail) {
+    const el = !clienteNome ? $("#contract-cliente-nome") : $("#contract-cliente-email");
+    el?.focus();
+    el.style.boxShadow = "0 0 0 3px rgba(194, 32, 32, 0.15)";
+    setTimeout(() => { el.style.boxShadow = ""; }, 2000);
+    return;
+  }
+
+  const format = document.querySelector('input[name="contract-format"]:checked')?.value || "google_docs";
+  const client_data = {
+    cliente_nome: clienteNome,
+    cliente_email: clienteEmail,
+    empresa: $("#contract-empresa")?.value.trim() || "",
+    cpf_cnpj: $("#contract-cpf-cnpj")?.value.trim() || "",
+    endereco: $("#contract-endereco")?.value.trim() || "",
+  };
+
+  state.generating = true;
+  setContractProgressSteps();
+  showSection("progress");
+  contractGenerateBtn.disabled = true;
+
+  try {
+    const body = JSON.stringify({ template_id: templateId, format, client_data });
+    simulateProgress("contract");
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+    const response = await fetch(CONFIG.contractAutomationWebhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let detail = `Erro ${response.status}`;
+      const text = await response.text();
+      try {
+        if (text?.trim()) {
+          const errData = JSON.parse(text);
+          detail = errData.message || errData.detail || errData.error || detail;
+        } else if (response.status === 504) {
+          detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        } else if (response.status >= 500) {
+          detail = "Erro interno do servidor. Tente novamente.";
+        }
+      } catch {
+        if (response.status === 504) detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        else if (response.status >= 500) detail = "Erro interno do servidor. Tente novamente.";
+      }
+      throw new Error(detail);
+    }
+
+    let data;
+    const text = await response.text();
+    if (!text?.trim()) throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Timeout: o workflow demorou mais de 5 minutos. Tente novamente.");
+      throw new Error("Resposta inválida do servidor. Tente novamente.");
+    }
+
+    const rawData = data.body && typeof data.body === "object" ? data.body : data.data && typeof data.data === "object" ? data.data : data;
+    state.docUrl = rawData.doc_url || data.doc_url || null;
+    state.downloadUrl = rawData.download_url || data.download_url || null;
+    state.docTitle = rawData.doc_title || data.doc_title || "Contrato";
+
+    if (data.error && !state.docUrl) {
+      throw new Error(data.error?.detail || data.error?.message || data.error || "Erro ao gerar minuta.");
+    }
+
+    completeProgress();
+    setTimeout(() => {
+      showSection("result");
+      resultActionsPresentation?.classList.add("hidden");
+      resultActionsResearch?.classList.add("hidden");
+      resultActionsContracts?.classList.remove("hidden");
+      $(".result-title").textContent = "Minuta Gerada";
+      newBtn.textContent = "Gerar nova minuta";
+      resultInfo.textContent = state.docTitle + (state.docUrl ? " — documento pronto" : "");
+      resultInfo.classList.remove("result-info-error");
+      openContractDocBtn.style.display = state.docUrl ? "" : "none";
+      openContractDownloadBtn.style.display = state.downloadUrl ? "" : "none";
+      resultReasoning?.closest(".result-reasoning-wrap")?.classList.add("hidden");
+      resultAnalysisWrap?.classList.add("hidden");
+    }, 600);
+  } catch (error) {
+    showSection("error");
+    errorMessage.textContent = error.message || "Erro desconhecido ao gerar a minuta.";
+  } finally {
+    state.generating = false;
+    contractGenerateBtn.disabled = false;
+  }
+}
+
+function setContractProgressSteps() {
+  const steps = progressSteps?.querySelectorAll(".step");
+  if (!steps || steps.length < 4) return;
+  const labels = ["Validando dados...", "Processando template...", "Gerando documento...", "Finalizando..."];
+  steps.forEach((step, i) => {
+    const label = step.querySelector(".step-label");
+    if (label) label.textContent = labels[i] || label.textContent;
+  });
+  progressTitle.textContent = "Validando dados...";
+}
 
 // ============================================
 // Market Research
@@ -552,9 +701,11 @@ function simulateProgress(mode = "presentation") {
   let currentStep = 1;
   const titles = mode === "research"
     ? ["Coletando dados...", "Consolidando informações...", "Gerando relatório...", "Finalizando..."]
-    : mode === "slides-prompt"
-      ? ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."]
-      : ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
+    : mode === "contract"
+      ? ["Validando dados...", "Processando template...", "Gerando documento...", "Finalizando..."]
+      : mode === "slides-prompt"
+        ? ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."]
+        : ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
 
   progressBar.style.width = "0%";
   updateSteps(1);
@@ -612,6 +763,14 @@ openReportBtn?.addEventListener("click", () => {
   if (state.reportUrl) window.open(state.reportUrl, "_blank");
 });
 
+openContractDocBtn?.addEventListener("click", () => {
+  if (state.docUrl) window.open(state.docUrl, "_blank");
+});
+
+openContractDownloadBtn?.addEventListener("click", () => {
+  if (state.downloadUrl) window.open(state.downloadUrl, "_blank");
+});
+
 copyAnalysisBtn?.addEventListener("click", async () => {
   if (!state.researchAnalysisSlides) return;
   try {
@@ -636,6 +795,8 @@ retryBtn.addEventListener("click", () => {
     handleGenerate();
   } else if (state.currentView === "market-research" && researchTopicInput?.value.trim()) {
     handleMarketResearchSubmit();
+  } else if (state.currentView === "contracts" && contractTemplateId?.value.trim()) {
+    handleContractSubmit();
   }
 });
 
@@ -646,6 +807,9 @@ function resetUI() {
   state.researchSheetsUrl = null;
   state.reportUrl = null;
   state.researchAnalysisSlides = null;
+  state.docUrl = null;
+  state.downloadUrl = null;
+  state.docTitle = null;
   state.resultBlob = null;
   state.resultFilename = "";
   state.reasoning = "";
@@ -655,9 +819,11 @@ function resetUI() {
   openSheetsBtn.style.display = "none";
   openResearchSheetsBtn && (openResearchSheetsBtn.style.display = "none");
   openReportBtn && (openReportBtn.style.display = "none");
+  openContractDocBtn && (openContractDocBtn.style.display = "none");
+  openContractDownloadBtn && (openContractDownloadBtn.style.display = "none");
   resultActionsPresentation?.classList.remove("hidden");
   resultActionsResearch?.classList.add("hidden");
-  resultAnalysisWrap?.classList.add("hidden");
+  resultActionsContracts?.classList.add("hidden");
   $(".result-title").textContent = "Apresentação Gerada";
   newBtn.textContent = "Criar outra apresentação";
   clearInterval(progressInterval);
@@ -681,6 +847,7 @@ function showSection(section) {
   } else {
     viewPresentation?.classList.add("hidden");
     viewMarketResearch?.classList.add("hidden");
+    viewContracts?.classList.add("hidden");
     if (section === "progress") progressCard.classList.remove("hidden");
     else if (section === "result") resultCard.classList.remove("hidden");
     else if (section === "error") errorCard.classList.remove("hidden");
