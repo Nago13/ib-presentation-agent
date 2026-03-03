@@ -26,6 +26,7 @@ const state = {
   currentView: "presentation",
   researchSheetsUrl: null,
   reportUrl: null,
+  researchAnalysisSlides: null,
 };
 
 // ============================================
@@ -65,6 +66,9 @@ const openResearchSheetsBtn = $("#open-research-sheets-btn");
 const openReportBtn = $("#open-report-btn");
 const resultActionsPresentation = $("#result-actions-presentation");
 const resultActionsResearch = $("#result-actions-research");
+const resultAnalysisWrap = $("#result-analysis-wrap");
+const resultAnalysisText = $("#result-analysis-text");
+const copyAnalysisBtn = $("#copy-analysis-btn");
 
 // ============================================
 // Sidebar Navigation / View Switching
@@ -457,6 +461,7 @@ async function handleMarketResearchSubmit() {
     state.researchSheetsUrl = rawData.sheets_url || data.sheets_url || null;
     state.reportUrl = rawData.report_url || data.report_url || null;
     state.reasoning = rawData.reasoning ?? data.reasoning ?? "";
+    state.researchAnalysisSlides = rawData.analysis_slides || data.analysis_slides || null;
 
     if (data.error && !state.researchSheetsUrl) {
       throw new Error(data.error?.detail || data.error?.message || data.error || "Erro ao gerar pesquisa.");
@@ -477,6 +482,14 @@ async function handleMarketResearchSubmit() {
       if (resultReasoning) {
         resultReasoning.textContent = state.reasoning || "Nenhum raciocínio disponível.";
         resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
+      }
+      if (resultAnalysisWrap && resultAnalysisText) {
+        if (state.researchAnalysisSlides) {
+          resultAnalysisText.textContent = state.researchAnalysisSlides;
+          resultAnalysisWrap.classList.remove("hidden");
+        } else {
+          resultAnalysisWrap.classList.add("hidden");
+        }
       }
     }, 600);
   } catch (error) {
@@ -707,6 +720,19 @@ openReportBtn?.addEventListener("click", () => {
   if (state.reportUrl) window.open(state.reportUrl, "_blank");
 });
 
+copyAnalysisBtn?.addEventListener("click", async () => {
+  if (!state.researchAnalysisSlides) return;
+  try {
+    await navigator.clipboard.writeText(state.researchAnalysisSlides);
+    const orig = copyAnalysisBtn.textContent;
+    copyAnalysisBtn.textContent = "Copiado!";
+    setTimeout(() => { copyAnalysisBtn.textContent = orig; }, 2000);
+  } catch {
+    copyAnalysisBtn.textContent = "Erro ao copiar";
+    setTimeout(() => { copyAnalysisBtn.textContent = "Copiar"; }, 2000);
+  }
+});
+
 // ============================================
 // Reset / Retry
 // ============================================
@@ -729,6 +755,7 @@ function resetUI() {
   state.sheetsUrl = null;
   state.researchSheetsUrl = null;
   state.reportUrl = null;
+  state.researchAnalysisSlides = null;
   state.resultBlob = null;
   state.resultFilename = "";
   state.reasoning = "";
@@ -740,6 +767,7 @@ function resetUI() {
   openReportBtn && (openReportBtn.style.display = "none");
   resultActionsPresentation?.classList.remove("hidden");
   resultActionsResearch?.classList.add("hidden");
+  resultAnalysisWrap?.classList.add("hidden");
   $(".result-title").textContent = "Apresentação Gerada";
   newBtn.textContent = "Criar outra apresentação";
   clearInterval(progressInterval);
