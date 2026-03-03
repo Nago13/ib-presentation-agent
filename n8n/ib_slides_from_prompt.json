@@ -1,0 +1,196 @@
+{
+  "name": "IB Slides from Prompt",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Apresentação por Slides\n\nO usuário envia um prompt estruturado definindo o conteúdo exato de cada slide (Headline, Body, Left/Right column, tabelas). O agente converte para JSON sem pesquisar — apenas estrutura o conteúdo.\n\n**Webhook:** POST /generate-presentation-from-slides\n**Body:** FormData com slides_prompt e opcionalmente files\n**Credencial:** Groq API",
+        "height": 260,
+        "width": 340,
+        "color": 4
+      },
+      "id": "note-instructions",
+      "name": "Instruções",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [140, 80]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-presentation-from-slides",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 480]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Extrair slides_prompt e arquivos anexados\nconst items = $input.all();\nlet prompt = '';\nlet attachedData = '';\nlet hasFiles = false;\n\nfor (const item of items) {\n  const body = item.json.body || item.json;\n  if (body) {\n    prompt = body.slides_prompt || body.prompt || body.message || '';\n  }\n  if (!prompt && item.json.slides_prompt) {\n    prompt = item.json.slides_prompt;\n  }\n  if (!prompt && item.json.prompt) {\n    prompt = item.json.prompt;\n  }\n\n  if (item.binary) {\n    for (const [key, binaryData] of Object.entries(item.binary)) {\n      hasFiles = true;\n      const fileName = binaryData.fileName || 'arquivo';\n      const mimeType = binaryData.mimeType || '';\n      try {\n        if (mimeType === 'text/csv' || fileName.endsWith('.csv')) {\n          const content = Buffer.from(binaryData.data, 'base64').toString('utf-8');\n          const lines = content.split('\\n').slice(0, 100);\n          attachedData += `\\n\\n=== DADOS DE ${fileName} (CSV) ===\\n${lines.join('\\n')}`;\n          if (content.split('\\n').length > 100) {\n            attachedData += `\\n... (${content.split('\\n').length - 100} linhas omitidas)`;\n          }\n        } else if (mimeType === 'text/plain' || fileName.endsWith('.txt')) {\n          const content = Buffer.from(binaryData.data, 'base64').toString('utf-8');\n          attachedData += `\\n\\n=== DADOS DE ${fileName} (TEXTO) ===\\n${content.substring(0, 5000)}`;\n        } else if (mimeType.includes('json') || fileName.endsWith('.json')) {\n          const content = Buffer.from(binaryData.data, 'base64').toString('utf-8');\n          attachedData += `\\n\\n=== DADOS DE ${fileName} (JSON) ===\\n${content.substring(0, 5000)}`;\n        } else if (mimeType.includes('spreadsheet') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {\n          attachedData += `\\n\\n=== ARQUIVO EXCEL: ${fileName} ===\\n[Arquivo detectado]`;\n        } else if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {\n          attachedData += `\\n\\n=== ARQUIVO PDF: ${fileName} ===\\n[PDF detectado]`;\n        } else {\n          attachedData += `\\n\\n=== ARQUIVO: ${fileName} ===\\n[Tipo não processado]`;\n        }\n      } catch (e) {\n        attachedData += `\\n\\n=== ERRO ao processar ${fileName}: ${e.message} ===`;\n      }\n    }\n  }\n}\n\nif (!prompt || prompt.trim().length < 10) {\n  throw new Error('Nenhum prompt de slides encontrado. Envie o campo \"slides_prompt\" no body.');\n}\n\nreturn [{\n  json: {\n    prompt: prompt.trim(),\n    attachedData: attachedData || 'Nenhum dado anexado.',\n    hasFiles: hasFiles\n  }\n}];"
+      },
+      "id": "node-process-input",
+      "name": "Processar Entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 480]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "options": {
+          "systemMessage": "Você é um assistente especializado em converter especificações de slides em JSON estruturado para apresentações. Você NÃO pesquisa dados — apenas interpreta e estrutura o que o usuário forneceu.\n\n## FORMATO DE ENTRADA\nO usuário envia um prompt estruturado com blocos no formato:\n- SLIDE N — COVER / CLOSING / ou headline descritivo\n- Headline: título do slide\n- Subheadline: (opcional)\n- Body: parágrafos e bullets\n- Left column / Right column / Three columns: conteúdo por coluna\n- Tabelas: Term | Detail ou Metric | Value\n- Platform metrics: listas de métricas (label, value)\n\n## SEU OBJETIVO\nConverter essa especificação em JSON válido no formato esperado pelo gerador de slides.\n\n## LAYOUTS DISPONÍVEIS\n- **cover**: capa (title, subtitle, date)\n- **content**: bullets (title, bullets[])\n- **two_columns**: left_column { subtitle, bullets }, right_column { subtitle, bullets }\n- **table**: table { headers[], rows[][] }\n- **key_metrics**: metrics[{ label, value, variation }]\n- **closing**: encerramento (title, subtitle, contact_info)\n\n## REGRAS\n1. SLIDE 1 — COVER → layout \"cover\". Headline=v title, Subheadline=v subtitle, data (Strictly Confidential etc) → date\n2. Último slide com CTA/email → layout \"closing\", contact_info com email\n3. \"Three columns\": distribua em left_column (col 1+2) e right_column (col 3), ou use content com bullets agrupados\n4. \"Left column\" / \"Right column\" explícitos → two_columns\n5. Tabelas (Term|Detail, Metric|Value) → layout \"table\" com headers e rows extraídos\n6. Listas de métricas (1.5B+ Views, ~50% EBITDA) → key_metrics com label, value, variation quando houver\n7. Headline + Body (parágrafos/bullets) → content\n8. NÃO invente dados. Use estritamente o texto do usuário.\n9. presentation_title: extraia do primeiro Headline (capa) ou use título coerente\n10. Primeiro slide sempre cover, último sempre closing\n\n## FORMATO DE SAÍDA\nSua resposta DEVE ter:\n1. Bloco ## Raciocínio e pesquisas (breve, 2-4 bullets descrevendo como mapeou os layouts)\n2. Linha em branco\n3. Code block JSON com presentation_title e slides[]\n\n```json\n{\n  \"presentation_title\": \"Título\",\n  \"slides\": [\n    { \"layout\": \"cover\", \"title\": \"...\", \"subtitle\": \"...\", \"date\": \"...\" },\n    { \"layout\": \"content\", \"title\": \"...\", \"bullets\": [\"...\", \"...\"] },\n    { \"layout\": \"two_columns\", \"title\": \"...\", \"left_column\": { \"subtitle\": \"...\", \"bullets\": [...] }, \"right_column\": { ... } },\n    { \"layout\": \"table\", \"title\": \"...\", \"table\": { \"headers\": [...], \"rows\": [[...], [...]] } },\n    { \"layout\": \"key_metrics\", \"title\": \"...\", \"metrics\": [{ \"label\": \"...\", \"value\": \"...\", \"variation\": \"...\" }] },\n    { \"layout\": \"closing\", \"title\": \"...\", \"contact_info\": \"...\" }\n  ]\n}\n```\n\nGere TODOS os slides do prompt. Não resuma nem omita conteúdo.",
+          "maxIterations": 5
+        },
+        "text": "={{ $json.prompt }}\n\n{{ $json.hasFiles ? '## DADOS ANEXADOS\\n' + $json.attachedData : '' }}"
+      },
+      "id": "node-ai-agent",
+      "name": "AI Agent Slides",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [680, 480]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.2,
+          "maxTokensToSample": 32000
+        }
+      },
+      "id": "node-groq-model",
+      "name": "Groq Llama 3.3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [500, 280],
+      "credentials": {
+        "groqApi": {
+          "id": "CONFIGURE_GROQ_CREDENTIAL",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const agentOutput = $input.first().json.output || $input.first().json.text || '';\nif (!agentOutput || agentOutput.length < 10) {\n  throw new Error('Saída do agente vazia. Tamanho: ' + agentOutput.length);\n}\nlet reasoning = '';\nfunction extractReasoning(text, splitPos) {\n  if (splitPos <= 0) return '';\n  const before = text.substring(0, splitPos).trim();\n  const title = '## Raciocinio e pesquisas';\n  const titleAlt = '## Raciocínio e pesquisas';\n  let r = before;\n  if (r.includes(title)) r = r.replace(title, '');\n  if (r.includes(titleAlt)) r = r.replace(titleAlt, '');\n  return r.replace(/^\\s+/, '').trim();\n}\nfunction tryParse(str) {\n  if (!str || str.length < 5) return null;\n  try { return JSON.parse(str); } catch (e) { return null; }\n}\nfunction sanitize(s) {\n  let t = s;\n  t = t.replace(/,([\\s\\r\\n]*[}\\]])/g, '$1');\n  return t;\n}\nfunction repairTruncated(str) {\n  if (!str || str.length < 10) return null;\n  let s = str.trim();\n  s = s.replace(/,?\\s*\"[^\"]*$/g, '');\n  s = s.replace(/,?\\s*\"[^\"]*\"\\s*:\\s*$/g, '');\n  s = s.replace(/,\\s*$/g, '');\n  const stack = [];\n  let inStr = false;\n  let esc = false;\n  for (let i = 0; i < s.length; i++) {\n    const c = s[i];\n    if (esc) { esc = false; continue; }\n    if (c === '\\\\') { esc = true; continue; }\n    if (c === '\"') { inStr = !inStr; continue; }\n    if (inStr) continue;\n    if (c === '{') stack.push('}');\n    else if (c === '[') stack.push(']');\n    else if (c === '}' || c === ']') stack.pop();\n  }\n  while (stack.length > 0) s += stack.pop();\n  return tryParse(s);\n}\nfunction extractByBraces(text) {\n  let startIdx = -1;\n  const ptIdx = text.indexOf('\"presentation_title\"');\n  const slIdx = text.indexOf('\"slides\"');\n  const keyIdx = ptIdx >= 0 ? (slIdx >= 0 ? Math.min(ptIdx, slIdx) : ptIdx) : slIdx;\n  if (keyIdx >= 0) {\n    for (let i = keyIdx; i >= 0; i--) {\n      if (text[i] === '{') { startIdx = i; break; }\n    }\n  }\n  if (startIdx === -1) {\n    for (let i = 0; i < text.length; i++) {\n      if (text[i] === '{') { startIdx = i; break; }\n    }\n  }\n  if (startIdx === -1) return '';\n  let depth = 0;\n  let endIdx = text.length;\n  for (let i = startIdx; i < text.length; i++) {\n    if (text[i] === '{' || text[i] === '[') depth++;\n    else if (text[i] === '}' || text[i] === ']') {\n      depth--;\n      if (depth === 0) { endIdx = i + 1; break; }\n    }\n  }\n  return text.substring(startIdx, endIdx);\n}\nlet endReasoning = agentOutput.length;\nconst i1 = agentOutput.indexOf('```');\nif (i1 >= 0 && i1 < endReasoning) endReasoning = i1;\nconst i2 = agentOutput.indexOf(']son');\nif (i2 >= 0 && i2 < endReasoning) endReasoning = i2;\nconst i3 = agentOutput.indexOf('{\"presentation_title\"');\nif (i3 >= 0 && i3 < endReasoning) endReasoning = i3;\nconst i4 = agentOutput.indexOf('{\"slides\"');\nif (i4 >= 0 && i4 < endReasoning) endReasoning = i4;\nreasoning = extractReasoning(agentOutput, endReasoning);\nlet normalized = agentOutput.replace(/\\\"]son/g, ' ').replace(/\\\"]json/g, ' ').replace(/\"json\\s*/g, ' ').replace(/']son/g, ' ');\nlet rawJson = '';\nlet parsed = null;\nconst codeBlockRe = /```(?:json)?[\\s\\n]*([\\s\\S]+?)[\\s\\n]*```/;\nconst cbMatch = normalized.match(codeBlockRe);\nif (cbMatch && cbMatch[1] && cbMatch[1].trim().length > 5) {\n  rawJson = cbMatch[1].trim();\n  parsed = tryParse(sanitize(rawJson));\n  if (!parsed) {\n    let fixed = rawJson.replace(/'([^']*)'\\s*:/g, '\"$1\":');\n    fixed = fixed.replace(/:\\s*'([^']*)'/g, ': \"$1\"');\n    parsed = tryParse(sanitize(fixed));\n  }\n  if (!parsed) {\n    const allSingle = rawJson.replace(/'/g, '\"');\n    parsed = tryParse(sanitize(allSingle));\n  }\n}\nif (!parsed) {\n  rawJson = extractByBraces(normalized);\n  if (rawJson) {\n    parsed = tryParse(sanitize(rawJson));\n    if (!parsed) {\n      let fixed = rawJson.replace(/'([^']*)'\\s*:/g, '\"$1\":');\n      fixed = fixed.replace(/:\\s*'([^']*)'/g, ': \"$1\"');\n      parsed = tryParse(sanitize(fixed));\n    }\n    if (!parsed) {\n      const allSingle = rawJson.replace(/'/g, '\"');\n      parsed = tryParse(sanitize(allSingle));\n    }\n  }\n}\nif (!parsed) {\n  parsed = tryParse(sanitize(normalized));\n}\nif (!parsed && rawJson && rawJson.length > 20) {\n  parsed = repairTruncated(sanitize(rawJson));\n}\nif (!parsed) {\n  const last200 = rawJson.length > 200 ? rawJson.substring(rawJson.length - 200) : rawJson;\n  const dbg = 'agentOutput.length=' + agentOutput.length + ' rawJson.length=' + rawJson.length + ' primeiros 400: ' + normalized.substring(0, 400) + ' | ultimos 200 rawJson: ' + last200;\n  throw new Error('Nenhum JSON válido encontrado. ' + dbg);\n}\nconst slidesJson = parsed;\nif (!slidesJson.slides || !Array.isArray(slidesJson.slides)) {\n  throw new Error('JSON inválido: campo slides não encontrado ou não é array');\n}\nif (slidesJson.slides.length === 0) {\n  throw new Error('JSON inválido: array de slides vazio');\n}\nfor (let i = 0; i < slidesJson.slides.length; i++) {\n  if (!slidesJson.slides[i].layout) {\n    throw new Error('Slide ' + (i+1) + ' sem campo layout');\n  }\n}\nreturn [{ json: { ...slidesJson, reasoning: reasoning || '' } }];"
+      },
+      "id": "node-extract-json",
+      "name": "Extrair JSON dos Slides",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ib-pptx-service.onrender.com/generate-slides",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ presentation_title: $json.presentation_title, slides: $json.slides }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "node-generate-pptx",
+      "name": "Gerar Google Slides",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 480],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "let reasoning = '';\nlet presentation_title = 'apresentacao';\ntry {\n  const slidesData = $('Extrair JSON dos Slides').first();\n  if (slidesData && slidesData.json) {\n    reasoning = slidesData.json.reasoning || '';\n    presentation_title = slidesData.json.presentation_title || 'apresentacao';\n  }\n} catch (e) {}\n\nconst item = $input.first();\nconst rawData = item.json || {};\nconst data = (rawData.body && typeof rawData.body === 'object') ? rawData.body : (rawData.data && typeof rawData.data === 'object') ? rawData.data : rawData;\n\nconst slides_url = data.slides_url || null;\nconst sheets_url = data.sheets_url || null;\n\nfunction getErrorMessage(d) {\n  if (!d || typeof d !== 'object') return null;\n  let s = d.detail || d.error || d.message || d.msg;\n  if (typeof s === 'string' && s.length > 0) return s;\n  if (d.error && typeof d.error === 'object' && typeof d.error.message === 'string') return d.error.message;\n  if (d.body) {\n    const b = typeof d.body === 'string' ? (() => { try { return JSON.parse(d.body); } catch(e) { return null; } })() : d.body;\n    if (b && typeof b.detail === 'string') return b.detail;\n    if (b && typeof b.error === 'string') return b.error;\n  }\n  if (d.json && typeof d.json.detail === 'string') return d.json.detail;\n  return null;\n}\n\nconst errMsg = getErrorMessage(data);\nconst fallback = 'Google Slides não gerado. Verifique as credenciais e o serviço.';\n\nif (!slides_url) {\n  return [{ json: {\n    slides_url: null,\n    sheets_url: null,\n    presentation_title,\n    reasoning,\n    error: errMsg || fallback\n  }}];\n}\n\nreturn [{ json: {\n  slides_url,\n  sheets_url,\n  presentation_title: data.presentation_title || presentation_title,\n  reasoning\n}}];"
+      },
+      "id": "node-mount-response",
+      "name": "Montar resposta webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 480]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-respond",
+      "name": "Retornar Apresentação",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1600, 480]
+    },
+    {
+      "parameters": {
+        "content": "## Credencial necessária\n\n**Groq API** (groq.com)\nCrie credencial Groq API e configure no node \"Groq Llama 3.3\".\nSem ferramentas de pesquisa — apenas conversão de prompt em JSON.",
+        "height": 160,
+        "width": 320,
+        "color": 6
+      },
+      "id": "note-credentials",
+      "name": "Credencial",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [500, 80]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Processar Entrada", "type": "main", "index": 0 }]]
+    },
+    "Processar Entrada": {
+      "main": [[{ "node": "AI Agent Slides", "type": "main", "index": 0 }]]
+    },
+    "AI Agent Slides": {
+      "main": [[{ "node": "Extrair JSON dos Slides", "type": "main", "index": 0 }]]
+    },
+    "Extrair JSON dos Slides": {
+      "main": [[{ "node": "Gerar Google Slides", "type": "main", "index": 0 }]]
+    },
+    "Gerar Google Slides": {
+      "main": [[{ "node": "Montar resposta webhook", "type": "main", "index": 0 }]]
+    },
+    "Montar resposta webhook": {
+      "main": [[{ "node": "Retornar Apresentação", "type": "main", "index": 0 }]]
+    },
+    "Groq Llama 3.3": {
+      "ai_languageModel": [[{ "node": "AI Agent Slides", "type": "ai_languageModel", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "investment-banking", "id": "tag-ib" },
+    { "name": "ai-agent", "id": "tag-ai" }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-03T00:00:00.000Z",
+  "versionId": "1"
+}
