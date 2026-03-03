@@ -46,10 +46,7 @@ const apiStatus = $("#api-status");
 const headerTitle = $(".header-title");
 const headerSubtitle = $(".header-subtitle");
 const viewPresentation = $("#view-presentation");
-const viewSlidesPrompt = $("#view-slides-prompt");
 const viewMarketResearch = $("#view-market-research");
-const slidesPromptInput = $("#slides-prompt-input");
-const slidesGenerateBtn = $("#slides-generate-btn");
 const researchTopicInput = $("#research-topic-input");
 const researchExecuteBtn = $("#research-execute-btn");
 const openResearchSheetsBtn = $("#open-research-sheets-btn");
@@ -65,24 +62,19 @@ function showView(view) {
   document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("active"));
   const navMap = {
     presentation: "nav-presentation",
-    "slides-prompt": "nav-slides-prompt",
     "market-research": "nav-market-research",
     history: "nav-history",
   };
   $(`#${navMap[view] || "nav-presentation"}`)?.classList.add("active");
 
   viewPresentation?.classList.add("hidden");
-  viewSlidesPrompt?.classList.add("hidden");
   viewMarketResearch?.classList.add("hidden");
 
   if (view === "presentation") {
     viewPresentation?.classList.remove("hidden");
+    updatePromptUIForMode();
     if (headerTitle) headerTitle.textContent = "Nova Apresentação";
-    if (headerSubtitle) headerSubtitle.textContent = "Descreva a apresentação desejada e o agente fará o resto";
-  } else if (view === "slides-prompt") {
-    viewSlidesPrompt?.classList.remove("hidden");
-    if (headerTitle) headerTitle.textContent = "Apresentação por Slides";
-    if (headerSubtitle) headerSubtitle.textContent = "Defina o conteúdo exato de cada slide e o agente criará a apresentação";
+    if (headerSubtitle) headerSubtitle.textContent = "Descreva a apresentação desejada ou defina o conteúdo de cada slide";
   } else if (view === "market-research") {
     viewMarketResearch?.classList.remove("hidden");
     if (headerTitle) headerTitle.textContent = "Pesquisa de Mercado";
@@ -99,11 +91,6 @@ let sectionState = "form";
 $("#nav-presentation")?.addEventListener("click", (e) => {
   e.preventDefault();
   showView("presentation");
-});
-
-$("#nav-slides-prompt")?.addEventListener("click", (e) => {
-  e.preventDefault();
-  showView("slides-prompt");
 });
 
 $("#nav-market-research")?.addEventListener("click", (e) => {
@@ -125,16 +112,22 @@ document.querySelectorAll(".hint").forEach((hint) => {
 });
 
 dropzone.addEventListener("click", () => fileInput.click());
+
 dropzone.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropzone.classList.add("dragover");
 });
-dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+
+dropzone.addEventListener("dragleave", () => {
+  dropzone.classList.remove("dragover");
+});
+
 dropzone.addEventListener("drop", (e) => {
   e.preventDefault();
   dropzone.classList.remove("dragover");
   addFiles(e.dataTransfer.files);
 });
+
 fileInput.addEventListener("change", () => {
   addFiles(fileInput.files);
   fileInput.value = "";
@@ -152,6 +145,33 @@ function addFiles(fileListObj) {
 function removeFile(index) {
   state.files.splice(index, 1);
   renderFileList();
+}
+
+function renderFileList() {
+  if (state.files.length === 0) {
+    fileList.innerHTML = "";
+    return;
+  }
+
+  fileList.innerHTML = state.files
+    .map((file, i) => {
+      const ext = getFileExtension(file.name);
+      const iconClass = getIconClass(ext);
+      const size = formatFileSize(file.size);
+      return `
+        <div class="file-item">
+          <div class="file-icon ${iconClass}">${ext}</div>
+          <div class="file-info">
+            <div class="file-name">${escapeHtml(file.name)}</div>
+            <div class="file-size">${size}</div>
+          </div>
+          <button class="file-remove" onclick="removeFile(${i})" title="Remover">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function getFileExtension(name) {
@@ -179,158 +199,36 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function renderFileList() {
-  if (state.files.length === 0) {
-    fileList.innerHTML = "";
-    return;
-  }
-  fileList.innerHTML = state.files
-    .map((file, i) => {
-      const ext = getFileExtension(file.name);
-      const iconClass = getIconClass(ext);
-      const size = formatFileSize(file.size);
-      return `
-        <div class="file-item">
-          <div class="file-icon ${iconClass}">${ext}</div>
-          <div class="file-info">
-            <div class="file-name">${escapeHtml(file.name)}</div>
-            <div class="file-size">${size}</div>
-          </div>
-          <button class="file-remove" onclick="removeFile(${i})" title="Remover">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      `;
-    })
-    .join("");
-}
-
 generateBtn.addEventListener("click", handleGenerate);
-slidesGenerateBtn?.addEventListener("click", handleSlidesPromptGenerate);
 
-function setSlidesPromptProgressSteps() {
-  const steps = progressSteps?.querySelectorAll(".step");
-  if (!steps || steps.length < 4) return;
-  const labels = ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."];
-  steps.forEach((step, i) => {
-    const label = step.querySelector(".step-label");
-    if (label) label.textContent = labels[i] || label.textContent;
-  });
+function getPresentationMode() {
+  return document.querySelector('input[name="presentation-mode"]:checked')?.value || "agent";
 }
 
-async function handleSlidesPromptGenerate() {
-  const prompt = slidesPromptInput?.value?.trim();
-  if (!prompt) {
-    slidesPromptInput?.focus();
-    slidesPromptInput.style.boxShadow = "0 0 0 3px rgba(194, 32, 32, 0.15)";
-    slidesPromptInput.style.borderColor = "#c22020";
-    setTimeout(() => {
-      slidesPromptInput.style.boxShadow = "";
-      slidesPromptInput.style.borderColor = "";
-    }, 2000);
-    return;
+function updatePromptUIForMode() {
+  const mode = getPresentationMode();
+  const hints = $("#prompt-hints");
+  const slidesHint = $("#slides-mode-hint");
+  if (mode === "slides") {
+    promptInput.placeholder = promptInput.dataset.placeholderSlides || "";
+    promptInput.rows = 12;
+    hints?.classList.add("hidden");
+    slidesHint?.classList.remove("hidden");
+    $("#prompt-label-text").textContent = "Conteúdo dos slides";
+  } else {
+    promptInput.placeholder = promptInput.dataset.placeholderAgent || "";
+    promptInput.rows = 5;
+    hints?.classList.remove("hidden");
+    slidesHint?.classList.add("hidden");
+    $("#prompt-label-text").textContent = "Prompt";
   }
-  state.generating = true;
-  setSlidesPromptProgressSteps();
-  showSection("progress");
-  slidesGenerateBtn.disabled = true;
-  try {
-    const formData = new FormData();
-    formData.append("slides_prompt", prompt);
-    state.files.forEach((file) => formData.append("files", file));
-    simulateProgress("slides-prompt");
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000);
-    const response = await fetch(CONFIG.slidesPromptWebhookUrl, {
-      method: "POST",
-      body: formData,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      let detail = `Erro ${response.status}`;
-      const text = await response.text();
-      try {
-        if (text && text.trim()) {
-          const errData = JSON.parse(text);
-          detail = errData.message || errData.detail || detail;
-        } else if (response.status === 504) {
-          detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
-        } else if (response.status >= 500) {
-          detail = "Erro interno do servidor. Tente novamente.";
-        }
-      } catch {
-        if (response.status === 504) detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
-        else if (response.status >= 500) detail = "Erro interno do servidor. Tente novamente.";
-      }
-      throw new Error(detail);
-    }
-    let data;
-    let responseError = null;
-    state.reasoning = "";
-    let responseText = "";
-    try {
-      responseText = await response.text();
-      if (!responseText || !responseText.trim()) {
-        throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
-      }
-      data = JSON.parse(responseText);
-    } catch (e) {
-      if (e.name === "AbortError") {
-        throw new Error("Timeout: o workflow demorou mais de 5 minutos. Tente novamente.");
-      }
-      if (e instanceof SyntaxError) {
-        const hint = responseText && responseText.length > 0 ? " A resposta pode ter sido truncada ou estar em formato inesperado." : "";
-        throw new Error("Resposta inválida do servidor." + hint + " Tente novamente.");
-      }
-      throw e;
-    }
-    state.reasoning = data.reasoning != null ? data.reasoning : "";
-    if (data.error && !data.slides_url) {
-      const err = data.error;
-      responseError = typeof err === "string"
-        ? err
-        : (err && (err.detail || err.message || err.error))
-          ? String(err.detail || err.message || err.error)
-          : "Erro ao gerar apresentação.";
-    } else if (data.slides_url) {
-      state.slidesUrl = data.slides_url;
-      state.sheetsUrl = data.sheets_url || null;
-    } else {
-      throw new Error(data.message || data.detail || "Resposta inválida do servidor.");
-    }
-    completeProgress();
-    setTimeout(() => {
-      showSection("result");
-      resultActionsPresentation?.classList.remove("hidden");
-      resultActionsResearch?.classList.add("hidden");
-      $(".result-title").textContent = "Apresentação Gerada";
-      newBtn.textContent = "Criar outra apresentação";
-      if (responseError) {
-        resultInfo.textContent = "Erro: " + responseError;
-        resultInfo.classList.add("result-info-error");
-        openSlidesBtn.style.display = "none";
-        openSheetsBtn.style.display = "none";
-      } else {
-        const title = data.presentation_title || "Apresentação";
-        resultInfo.textContent = title + " — pronta no Google Slides";
-        resultInfo.classList.remove("result-info-error");
-        openSlidesBtn.style.display = "";
-        openSheetsBtn.style.display = state.sheetsUrl ? "" : "none";
-      }
-      if (resultReasoning) {
-        resultReasoning.textContent = state.reasoning || "Nenhum raciocínio disponível.";
-        resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
-      }
-    }, 600);
-  } catch (error) {
-    showSection("error");
-    errorMessage.textContent = error.message || "Erro desconhecido ao gerar a apresentação.";
-  } finally {
-    state.generating = false;
-    slidesGenerateBtn.disabled = false;
-  }
+  promptInput.style.height = "auto";
+  promptInput.style.height = Math.min(promptInput.scrollHeight, mode === "slides" ? 600 : 300) + "px";
 }
+
+document.querySelectorAll('input[name="presentation-mode"]').forEach((radio) => {
+  radio.addEventListener("change", updatePromptUIForMode);
+});
 
 researchExecuteBtn?.addEventListener("click", handleMarketResearchSubmit);
 
@@ -346,24 +244,31 @@ async function handleMarketResearchSubmit() {
     }, 2000);
     return;
   }
+
   state.generating = true;
   setResearchProgressSteps();
   showSection("progress");
   researchExecuteBtn.disabled = true;
+
   try {
     const period = $("#research-period")?.value || "12";
     const sources = $("#research-sources")?.value || "";
     const body = JSON.stringify({ topic, period, sources });
+
     simulateProgress("research");
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
+
     const response = await fetch(CONFIG.marketResearchWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
       signal: controller.signal,
     });
+
     clearTimeout(timeoutId);
+
     if (!response.ok) {
       let detail = `Erro ${response.status}`;
       const text = await response.text();
@@ -382,6 +287,7 @@ async function handleMarketResearchSubmit() {
       }
       throw new Error(detail);
     }
+
     let data;
     const text = await response.text();
     if (!text?.trim()) throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
@@ -391,14 +297,17 @@ async function handleMarketResearchSubmit() {
       if (e.name === "AbortError") throw new Error("Timeout: o workflow demorou mais de 5 minutos. Tente novamente.");
       throw new Error("Resposta inválida do servidor. Tente novamente.");
     }
+
     const rawData = data.body && typeof data.body === "object" ? data.body : data.data && typeof data.data === "object" ? data.data : data;
     state.researchSheetsUrl = rawData.sheets_url || data.sheets_url || null;
     state.reportUrl = rawData.report_url || data.report_url || null;
     state.reasoning = rawData.reasoning ?? data.reasoning ?? "";
     state.researchAnalysisSlides = rawData.analysis_slides || data.analysis_slides || null;
+
     if (data.error && !state.researchSheetsUrl) {
       throw new Error(data.error?.detail || data.error?.message || data.error || "Erro ao gerar pesquisa.");
     }
+
     completeProgress();
     setTimeout(() => {
       showSection("result");
@@ -466,23 +375,45 @@ async function handleGenerate() {
     }, 2000);
     return;
   }
+
+  const isSlidesMode = getPresentationMode() === "slides";
+  const webhookUrl = isSlidesMode ? CONFIG.slidesPromptWebhookUrl : CONFIG.webhookUrl;
+  const formField = isSlidesMode ? "slides_prompt" : "prompt";
+
   state.generating = true;
-  setPresentationProgressSteps();
+  if (isSlidesMode) {
+    const steps = progressSteps?.querySelectorAll(".step");
+    if (steps?.length >= 4) {
+      const labels = ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."];
+      steps.forEach((step, i) => {
+        const label = step.querySelector(".step-label");
+        if (label) label.textContent = labels[i] || label.textContent;
+      });
+    }
+  } else {
+    setPresentationProgressSteps();
+  }
   showSection("progress");
   generateBtn.disabled = true;
+
   try {
     const formData = new FormData();
-    formData.append("prompt", prompt);
+    formData.append(formField, prompt);
     state.files.forEach((file) => formData.append("files", file));
-    simulateProgress("presentation");
+
+    simulateProgress(isSlidesMode ? "slides-prompt" : "presentation");
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
-    const response = await fetch(CONFIG.webhookUrl, {
+
+    const response = await fetch(webhookUrl, {
       method: "POST",
       body: formData,
       signal: controller.signal,
     });
+
     clearTimeout(timeoutId);
+
     if (!response.ok) {
       let detail = `Erro ${response.status}`;
       const text = await response.text();
@@ -501,11 +432,14 @@ async function handleGenerate() {
       }
       throw new Error(detail);
     }
+
     let data;
     let responseError = null;
     state.reasoning = "";
+    let text = "";
+
     try {
-      const text = await response.text();
+      text = await response.text();
       if (!text || !text.trim()) {
         throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
       }
@@ -520,7 +454,9 @@ async function handleGenerate() {
       }
       throw e;
     }
+
     state.reasoning = data.reasoning != null ? data.reasoning : "";
+
     if (data.error && !data.slides_url) {
       const err = data.error;
       responseError = typeof err === "string"
@@ -534,7 +470,9 @@ async function handleGenerate() {
     } else {
       throw new Error(data.message || data.detail || "Resposta inválida do servidor.");
     }
+
     completeProgress();
+
     setTimeout(() => {
       showSection("result");
       resultActionsPresentation?.classList.remove("hidden");
@@ -558,6 +496,7 @@ async function handleGenerate() {
         resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
       }
     }, 600);
+
   } catch (error) {
     showSection("error");
     errorMessage.textContent = error.message || "Erro desconhecido ao gerar a apresentação.";
@@ -577,14 +516,17 @@ function simulateProgress(mode = "presentation") {
     : mode === "slides-prompt"
       ? ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."]
       : ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
+
   progressBar.style.width = "0%";
   updateSteps(1);
   progressTitle.textContent = titles[0];
+
   progressInterval = setInterval(() => {
     if (progress < 90) {
       const increment = Math.random() * 3 + 0.5;
       progress = Math.min(progress + increment, 90);
       progressBar.style.width = progress + "%";
+
       const newStep = Math.min(Math.floor(progress / 25) + 1, 4);
       if (newStep !== currentStep) {
         currentStep = newStep;
@@ -645,8 +587,6 @@ retryBtn.addEventListener("click", () => {
   resetUI();
   if (state.currentView === "presentation" && promptInput.value.trim()) {
     handleGenerate();
-  } else if (state.currentView === "slides-prompt" && slidesPromptInput?.value?.trim()) {
-    handleSlidesPromptGenerate();
   } else if (state.currentView === "market-research" && researchTopicInput?.value?.trim()) {
     handleMarketResearchSubmit();
   }
@@ -684,11 +624,11 @@ function showSection(section) {
   progressCard.classList.add("hidden");
   resultCard.classList.add("hidden");
   errorCard.classList.add("hidden");
+
   if (section === "form") {
     showView(state.currentView);
   } else {
     viewPresentation?.classList.add("hidden");
-    viewSlidesPrompt?.classList.add("hidden");
     viewMarketResearch?.classList.add("hidden");
     if (section === "progress") progressCard.classList.remove("hidden");
     else if (section === "result") resultCard.classList.remove("hidden");
@@ -699,24 +639,33 @@ function showSection(section) {
 async function checkApiStatus() {
   const dot = apiStatus.querySelector(".status-dot");
   const text = apiStatus.querySelector(".status-text");
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(CONFIG.pptxServiceUrl + "/health", { signal: controller.signal });
+    const response = await fetch(CONFIG.pptxServiceUrl + "/health", {
+      signal: controller.signal,
+    });
     clearTimeout(timeout);
-    if (response.ok) { dot.className = "status-dot online"; text.textContent = "Serviço online"; }
-    else { dot.className = "status-dot offline"; text.textContent = "Serviço indisponível"; }
-  } catch { dot.className = "status-dot offline"; text.textContent = "Serviço offline"; }
+
+    if (response.ok) {
+      dot.className = "status-dot online";
+      text.textContent = "Serviço online";
+    } else {
+      dot.className = "status-dot offline";
+      text.textContent = "Serviço indisponível";
+    }
+  } catch {
+    dot.className = "status-dot offline";
+    text.textContent = "Serviço offline";
+  }
 }
+
 checkApiStatus();
 setInterval(checkApiStatus, 30000);
 
 promptInput.addEventListener("input", () => {
+  const maxH = getPresentationMode() === "slides" ? 600 : 300;
   promptInput.style.height = "auto";
-  promptInput.style.height = Math.min(promptInput.scrollHeight, 300) + "px";
-});
-
-slidesPromptInput?.addEventListener("input", () => {
-  slidesPromptInput.style.height = "auto";
-  slidesPromptInput.style.height = Math.min(slidesPromptInput.scrollHeight, 600) + "px";
+  promptInput.style.height = Math.min(promptInput.scrollHeight, maxH) + "px";
 });

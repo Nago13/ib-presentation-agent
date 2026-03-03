@@ -163,6 +163,34 @@ body {
 }
 .hint:hover { background: var(--blue); color: white; }
 
+.prompt-mode-toggle {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.mode-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mode-option input {
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.mode-option:has(input:checked) {
+  color: var(--navy);
+  font-weight: 600;
+}
+
 .prompt-hint-text {
   font-size: 13px; color: var(--text-muted);
   margin-top: 12px; line-height: 1.5;
