@@ -4,15 +4,23 @@
 
 const CONFIG = {
   webhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation",
-  pptxServiceUrl: "http://localhost:8000",
+  slidesPromptWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/generate-presentation-from-slides",
+  marketResearchWebhookUrl: "https://ggservices.app.n8n.cloud/webhook/market-research",
+  pptxServiceUrl: "https://ib-pptx-service.onrender.com",
 };
 
 const state = {
   files: [],
   generating: false,
+  slidesUrl: null,
+  sheetsUrl: null,
   resultBlob: null,
   resultFilename: "",
   reasoning: "",
+  currentView: "presentation",
+  researchSheetsUrl: null,
+  reportUrl: null,
+  researchAnalysisSlides: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -28,12 +36,84 @@ const progressSteps = $("#progress-steps");
 const resultCard = $("#result-card");
 const resultInfo = $("#result-info");
 const resultReasoning = $("#result-reasoning");
-const downloadBtn = $("#download-btn");
+const openSlidesBtn = $("#open-slides-btn");
+const openSheetsBtn = $("#open-sheets-btn");
 const newBtn = $("#new-btn");
 const errorCard = $("#error-card");
 const errorMessage = $("#error-message");
 const retryBtn = $("#retry-btn");
 const apiStatus = $("#api-status");
+const headerTitle = $(".header-title");
+const headerSubtitle = $(".header-subtitle");
+const viewPresentation = $("#view-presentation");
+const viewSlidesPrompt = $("#view-slides-prompt");
+const viewMarketResearch = $("#view-market-research");
+const slidesPromptInput = $("#slides-prompt-input");
+const slidesGenerateBtn = $("#slides-generate-btn");
+const researchTopicInput = $("#research-topic-input");
+const researchExecuteBtn = $("#research-execute-btn");
+const openResearchSheetsBtn = $("#open-research-sheets-btn");
+const openReportBtn = $("#open-report-btn");
+const resultActionsPresentation = $("#result-actions-presentation");
+const resultActionsResearch = $("#result-actions-research");
+const resultAnalysisWrap = $("#result-analysis-wrap");
+const resultAnalysisText = $("#result-analysis-text");
+const copyAnalysisBtn = $("#copy-analysis-btn");
+
+function showView(view) {
+  state.currentView = view;
+  document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("active"));
+  const navMap = {
+    presentation: "nav-presentation",
+    "slides-prompt": "nav-slides-prompt",
+    "market-research": "nav-market-research",
+    history: "nav-history",
+  };
+  $(`#${navMap[view] || "nav-presentation"}`)?.classList.add("active");
+
+  viewPresentation?.classList.add("hidden");
+  viewSlidesPrompt?.classList.add("hidden");
+  viewMarketResearch?.classList.add("hidden");
+
+  if (view === "presentation") {
+    viewPresentation?.classList.remove("hidden");
+    if (headerTitle) headerTitle.textContent = "Nova Apresentação";
+    if (headerSubtitle) headerSubtitle.textContent = "Descreva a apresentação desejada e o agente fará o resto";
+  } else if (view === "slides-prompt") {
+    viewSlidesPrompt?.classList.remove("hidden");
+    if (headerTitle) headerTitle.textContent = "Apresentação por Slides";
+    if (headerSubtitle) headerSubtitle.textContent = "Defina o conteúdo exato de cada slide e o agente criará a apresentação";
+  } else if (view === "market-research") {
+    viewMarketResearch?.classList.remove("hidden");
+    if (headerTitle) headerTitle.textContent = "Pesquisa de Mercado";
+    if (headerSubtitle) headerSubtitle.textContent = "Coletar dados de mercado, consolidar em planilhas e gerar relatórios estruturados";
+  }
+
+  if (sectionState === "form") {
+    showSection("form");
+  }
+}
+
+let sectionState = "form";
+
+$("#nav-presentation")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("presentation");
+});
+
+$("#nav-slides-prompt")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("slides-prompt");
+});
+
+$("#nav-market-research")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("market-research");
+});
+
+$("#nav-history")?.addEventListener("click", (e) => {
+  e.preventDefault();
+});
 
 document.querySelectorAll(".hint").forEach((hint) => {
   hint.addEventListener("click", () => {
@@ -45,8 +125,11 @@ document.querySelectorAll(".hint").forEach((hint) => {
 });
 
 dropzone.addEventListener("click", () => fileInput.click());
-dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
-dropzone.addEventListener("dragleave", () => { dropzone.classList.remove("dragover"); });
+dropzone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropzone.classList.add("dragover");
+});
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
 dropzone.addEventListener("drop", (e) => {
   e.preventDefault();
   dropzone.classList.remove("dragover");
@@ -59,92 +142,420 @@ fileInput.addEventListener("change", () => {
 
 function addFiles(fileListObj) {
   for (const file of fileListObj) {
-    if (!state.files.some((f) => f.name === file.name && f.size === file.size)) state.files.push(file);
+    if (!state.files.some((f) => f.name === file.name && f.size === file.size)) {
+      state.files.push(file);
+    }
   }
   renderFileList();
 }
+
 function removeFile(index) {
   state.files.splice(index, 1);
   renderFileList();
 }
-function renderFileList() {
-  if (state.files.length === 0) { fileList.innerHTML = ""; return; }
-  fileList.innerHTML = state.files.map((file, i) => {
-    const ext = file.name.split(".").pop().toLowerCase();
-    const iconClass = ["xlsx","xls"].includes(ext) ? "xlsx" : ext === "csv" ? "csv" : ext === "pdf" ? "pdf" : ext === "json" ? "json" : ["png","jpg","jpeg","gif"].includes(ext) ? "img" : "txt";
-    const size = file.size < 1024 ? file.size + " B" : file.size < 1024*1024 ? (file.size/1024).toFixed(1) + " KB" : (file.size/(1024*1024)).toFixed(1) + " MB";
-    const div = document.createElement("div"); div.textContent = file.name;
-    return `<div class="file-item"><div class="file-icon ${iconClass}">${ext}</div><div class="file-info"><div class="file-name">${div.innerHTML}</div><div class="file-size">${size}</div></div><button class="file-remove" onclick="removeFile(${i})" title="Remover"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
-  }).join("");
+
+function getFileExtension(name) {
+  return name.split(".").pop().toLowerCase();
 }
+
+function getIconClass(ext) {
+  if (["xlsx", "xls"].includes(ext)) return "xlsx";
+  if (ext === "csv") return "csv";
+  if (ext === "pdf") return "pdf";
+  if (ext === "json") return "json";
+  if (["png", "jpg", "jpeg", "gif"].includes(ext)) return "img";
+  return "txt";
+}
+
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderFileList() {
+  if (state.files.length === 0) {
+    fileList.innerHTML = "";
+    return;
+  }
+  fileList.innerHTML = state.files
+    .map((file, i) => {
+      const ext = getFileExtension(file.name);
+      const iconClass = getIconClass(ext);
+      const size = formatFileSize(file.size);
+      return `
+        <div class="file-item">
+          <div class="file-icon ${iconClass}">${ext}</div>
+          <div class="file-info">
+            <div class="file-name">${escapeHtml(file.name)}</div>
+            <div class="file-size">${size}</div>
+          </div>
+          <button class="file-remove" onclick="removeFile(${i})" title="Remover">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      `;
+    })
+    .join("");
+}
+
 generateBtn.addEventListener("click", handleGenerate);
+slidesGenerateBtn?.addEventListener("click", handleSlidesPromptGenerate);
+
+function setSlidesPromptProgressSteps() {
+  const steps = progressSteps?.querySelectorAll(".step");
+  if (!steps || steps.length < 4) return;
+  const labels = ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."];
+  steps.forEach((step, i) => {
+    const label = step.querySelector(".step-label");
+    if (label) label.textContent = labels[i] || label.textContent;
+  });
+}
+
+async function handleSlidesPromptGenerate() {
+  const prompt = slidesPromptInput?.value?.trim();
+  if (!prompt) {
+    slidesPromptInput?.focus();
+    slidesPromptInput.style.boxShadow = "0 0 0 3px rgba(194, 32, 32, 0.15)";
+    slidesPromptInput.style.borderColor = "#c22020";
+    setTimeout(() => {
+      slidesPromptInput.style.boxShadow = "";
+      slidesPromptInput.style.borderColor = "";
+    }, 2000);
+    return;
+  }
+  state.generating = true;
+  setSlidesPromptProgressSteps();
+  showSection("progress");
+  slidesGenerateBtn.disabled = true;
+  try {
+    const formData = new FormData();
+    formData.append("slides_prompt", prompt);
+    state.files.forEach((file) => formData.append("files", file));
+    simulateProgress("slides-prompt");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+    const response = await fetch(CONFIG.slidesPromptWebhookUrl, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      let detail = `Erro ${response.status}`;
+      const text = await response.text();
+      try {
+        if (text && text.trim()) {
+          const errData = JSON.parse(text);
+          detail = errData.message || errData.detail || detail;
+        } else if (response.status === 504) {
+          detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        } else if (response.status >= 500) {
+          detail = "Erro interno do servidor. Tente novamente.";
+        }
+      } catch {
+        if (response.status === 504) detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        else if (response.status >= 500) detail = "Erro interno do servidor. Tente novamente.";
+      }
+      throw new Error(detail);
+    }
+    let data;
+    let responseError = null;
+    state.reasoning = "";
+    let responseText = "";
+    try {
+      responseText = await response.text();
+      if (!responseText || !responseText.trim()) {
+        throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
+      }
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (e.name === "AbortError") {
+        throw new Error("Timeout: o workflow demorou mais de 5 minutos. Tente novamente.");
+      }
+      if (e instanceof SyntaxError) {
+        const hint = responseText && responseText.length > 0 ? " A resposta pode ter sido truncada ou estar em formato inesperado." : "";
+        throw new Error("Resposta inválida do servidor." + hint + " Tente novamente.");
+      }
+      throw e;
+    }
+    state.reasoning = data.reasoning != null ? data.reasoning : "";
+    if (data.error && !data.slides_url) {
+      const err = data.error;
+      responseError = typeof err === "string"
+        ? err
+        : (err && (err.detail || err.message || err.error))
+          ? String(err.detail || err.message || err.error)
+          : "Erro ao gerar apresentação.";
+    } else if (data.slides_url) {
+      state.slidesUrl = data.slides_url;
+      state.sheetsUrl = data.sheets_url || null;
+    } else {
+      throw new Error(data.message || data.detail || "Resposta inválida do servidor.");
+    }
+    completeProgress();
+    setTimeout(() => {
+      showSection("result");
+      resultActionsPresentation?.classList.remove("hidden");
+      resultActionsResearch?.classList.add("hidden");
+      $(".result-title").textContent = "Apresentação Gerada";
+      newBtn.textContent = "Criar outra apresentação";
+      if (responseError) {
+        resultInfo.textContent = "Erro: " + responseError;
+        resultInfo.classList.add("result-info-error");
+        openSlidesBtn.style.display = "none";
+        openSheetsBtn.style.display = "none";
+      } else {
+        const title = data.presentation_title || "Apresentação";
+        resultInfo.textContent = title + " — pronta no Google Slides";
+        resultInfo.classList.remove("result-info-error");
+        openSlidesBtn.style.display = "";
+        openSheetsBtn.style.display = state.sheetsUrl ? "" : "none";
+      }
+      if (resultReasoning) {
+        resultReasoning.textContent = state.reasoning || "Nenhum raciocínio disponível.";
+        resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
+      }
+    }, 600);
+  } catch (error) {
+    showSection("error");
+    errorMessage.textContent = error.message || "Erro desconhecido ao gerar a apresentação.";
+  } finally {
+    state.generating = false;
+    slidesGenerateBtn.disabled = false;
+  }
+}
+
+researchExecuteBtn?.addEventListener("click", handleMarketResearchSubmit);
+
+async function handleMarketResearchSubmit() {
+  const topic = researchTopicInput?.value.trim();
+  if (!topic) {
+    researchTopicInput?.focus();
+    researchTopicInput.style.boxShadow = "0 0 0 3px rgba(194, 32, 32, 0.15)";
+    researchTopicInput.style.borderColor = "#c22020";
+    setTimeout(() => {
+      researchTopicInput.style.boxShadow = "";
+      researchTopicInput.style.borderColor = "";
+    }, 2000);
+    return;
+  }
+  state.generating = true;
+  setResearchProgressSteps();
+  showSection("progress");
+  researchExecuteBtn.disabled = true;
+  try {
+    const period = $("#research-period")?.value || "12";
+    const sources = $("#research-sources")?.value || "";
+    const body = JSON.stringify({ topic, period, sources });
+    simulateProgress("research");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+    const response = await fetch(CONFIG.marketResearchWebhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      let detail = `Erro ${response.status}`;
+      const text = await response.text();
+      try {
+        if (text?.trim()) {
+          const errData = JSON.parse(text);
+          detail = errData.message || errData.detail || errData.error || detail;
+        } else if (response.status === 504) {
+          detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        } else if (response.status >= 500) {
+          detail = "Erro interno do servidor. Tente novamente.";
+        }
+      } catch {
+        if (response.status === 504) detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        else if (response.status >= 500) detail = "Erro interno do servidor. Tente novamente.";
+      }
+      throw new Error(detail);
+    }
+    let data;
+    const text = await response.text();
+    if (!text?.trim()) throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Timeout: o workflow demorou mais de 5 minutos. Tente novamente.");
+      throw new Error("Resposta inválida do servidor. Tente novamente.");
+    }
+    const rawData = data.body && typeof data.body === "object" ? data.body : data.data && typeof data.data === "object" ? data.data : data;
+    state.researchSheetsUrl = rawData.sheets_url || data.sheets_url || null;
+    state.reportUrl = rawData.report_url || data.report_url || null;
+    state.reasoning = rawData.reasoning ?? data.reasoning ?? "";
+    state.researchAnalysisSlides = rawData.analysis_slides || data.analysis_slides || null;
+    if (data.error && !state.researchSheetsUrl) {
+      throw new Error(data.error?.detail || data.error?.message || data.error || "Erro ao gerar pesquisa.");
+    }
+    completeProgress();
+    setTimeout(() => {
+      showSection("result");
+      resultActionsPresentation?.classList.add("hidden");
+      resultActionsResearch?.classList.remove("hidden");
+      const title = rawData.report_title || data.report_title || "Pesquisa de Mercado";
+      resultInfo.textContent = title + (state.researchSheetsUrl ? " — planilha consolidada pronta" : "");
+      resultInfo.classList.remove("result-info-error");
+      openResearchSheetsBtn.style.display = state.researchSheetsUrl ? "" : "none";
+      openReportBtn.style.display = state.reportUrl ? "" : "none";
+      $(".result-title").textContent = "Pesquisa Concluída";
+      newBtn.textContent = "Nova pesquisa";
+      if (resultReasoning) {
+        resultReasoning.textContent = state.reasoning || "Nenhum raciocínio disponível.";
+        resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
+      }
+      if (resultAnalysisWrap && resultAnalysisText) {
+        if (state.researchAnalysisSlides) {
+          resultAnalysisText.textContent = state.researchAnalysisSlides;
+          resultAnalysisWrap.classList.remove("hidden");
+        } else {
+          resultAnalysisWrap.classList.add("hidden");
+        }
+      }
+    }, 600);
+  } catch (error) {
+    showSection("error");
+    errorMessage.textContent = error.message || "Erro desconhecido ao executar a pesquisa.";
+  } finally {
+    state.generating = false;
+    researchExecuteBtn.disabled = false;
+  }
+}
+
+function setResearchProgressSteps() {
+  const steps = progressSteps?.querySelectorAll(".step");
+  if (!steps || steps.length < 4) return;
+  const labels = ["Coletando dados...", "Consolidando informações...", "Gerando relatório...", "Finalizando..."];
+  steps.forEach((step, i) => {
+    const label = step.querySelector(".step-label");
+    if (label) label.textContent = labels[i] || label.textContent;
+  });
+  progressTitle.textContent = "Coletando dados...";
+}
+
+function setPresentationProgressSteps() {
+  const steps = progressSteps?.querySelectorAll(".step");
+  if (!steps || steps.length < 4) return;
+  const labels = ["Analisando prompt", "Pesquisando dados", "Gerando conteúdo", "Criando slides"];
+  steps.forEach((step, i) => {
+    const label = step.querySelector(".step-label");
+    if (label) label.textContent = labels[i] || label.textContent;
+  });
+}
+
 async function handleGenerate() {
   const prompt = promptInput.value.trim();
   if (!prompt) {
     promptInput.focus();
     promptInput.style.boxShadow = "0 0 0 3px rgba(194, 32, 32, 0.15)";
     promptInput.style.borderColor = "#c22020";
-    setTimeout(() => { promptInput.style.boxShadow = ""; promptInput.style.borderColor = ""; }, 2000);
+    setTimeout(() => {
+      promptInput.style.boxShadow = "";
+      promptInput.style.borderColor = "";
+    }, 2000);
     return;
   }
   state.generating = true;
+  setPresentationProgressSteps();
   showSection("progress");
   generateBtn.disabled = true;
   try {
     const formData = new FormData();
     formData.append("prompt", prompt);
     state.files.forEach((file) => formData.append("files", file));
-    simulateProgress();
-    const response = await fetch(CONFIG.webhookUrl, { method: "POST", body: formData });
+    simulateProgress("presentation");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+    const response = await fetch(CONFIG.webhookUrl, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
     if (!response.ok) {
       let detail = `Erro ${response.status}`;
-      try { const errData = await response.json(); detail = errData.message || errData.detail || detail; } catch { detail = await response.text() || detail; }
+      const text = await response.text();
+      try {
+        if (text && text.trim()) {
+          const errData = JSON.parse(text);
+          detail = errData.message || errData.detail || detail;
+        } else if (response.status === 504) {
+          detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        } else if (response.status >= 500) {
+          detail = "Erro interno do servidor. Tente novamente.";
+        }
+      } catch {
+        if (response.status === 504) detail = "Timeout do servidor. O workflow demorou demais. Tente novamente.";
+        else if (response.status >= 500) detail = "Erro interno do servidor. Tente novamente.";
+      }
       throw new Error(detail);
     }
-    const contentType = response.headers.get("Content-Type") || "";
-    let blob;
-    let filename = "apresentacao.pptx";
+    let data;
+    let responseError = null;
     state.reasoning = "";
-    if (contentType.includes("application/json")) {
-      const data = await response.json();
-      state.reasoning = data.reasoning || "";
-      if (data.error && !data.presentation_base64) {
-        throw new Error(data.error);
-      } else if (data.presentation_base64 && typeof data.presentation_base64 === "string") {
-        try {
-          const cleanB64 = data.presentation_base64.replace(/\s/g, "");
-          const binaryString = atob(cleanB64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-          blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
-          filename = data.filename || "apresentacao.pptx";
-        } catch (decodeErr) {
-          throw new Error("O servidor retornou o arquivo em formato inválido. Tente novamente. (Detalhe: " + decodeErr.message + ")");
-        }
-      } else {
-        throw new Error(data.message || data.error || data.detail || "Resposta inválida do servidor.");
+    try {
+      const text = await response.text();
+      if (!text || !text.trim()) {
+        throw new Error("Resposta vazia do servidor. O workflow pode ter falhado.");
       }
-    } else {
-      blob = await response.blob();
-      const disposition = response.headers.get("Content-Disposition") || "";
-      const filenameMatch = disposition.match(/filename="?([^";\n]+)"?/);
-      filename = filenameMatch ? filenameMatch[1] : "apresentacao.pptx";
+      data = JSON.parse(text);
+    } catch (e) {
+      if (e.name === "AbortError") {
+        throw new Error("Timeout: o workflow demorou mais de 5 minutos. Tente novamente.");
+      }
+      if (e instanceof SyntaxError) {
+        const hint = text && text.length > 0 ? " A resposta pode ter sido truncada ou estar em formato inesperado." : "";
+        throw new Error("Resposta inválida do servidor." + hint + " Tente novamente.");
+      }
+      throw e;
     }
-    state.resultBlob = blob;
-    state.resultFilename = filename;
+    state.reasoning = data.reasoning != null ? data.reasoning : "";
+    if (data.error && !data.slides_url) {
+      const err = data.error;
+      responseError = typeof err === "string"
+        ? err
+        : (err && (err.detail || err.message || err.error))
+          ? String(err.detail || err.message || err.error)
+          : "Erro ao gerar apresentação.";
+    } else if (data.slides_url) {
+      state.slidesUrl = data.slides_url;
+      state.sheetsUrl = data.sheets_url || null;
+    } else {
+      throw new Error(data.message || data.detail || "Resposta inválida do servidor.");
+    }
     completeProgress();
     setTimeout(() => {
       showSection("result");
-      resultInfo.textContent = `${filename} - ${formatFileSize(blob.size)}`;
+      resultActionsPresentation?.classList.remove("hidden");
+      resultActionsResearch?.classList.add("hidden");
+      $(".result-title").textContent = "Apresentação Gerada";
+      newBtn.textContent = "Criar outra apresentação";
+      if (responseError) {
+        resultInfo.textContent = "Erro: " + responseError;
+        resultInfo.classList.add("result-info-error");
+        openSlidesBtn.style.display = "none";
+        openSheetsBtn.style.display = "none";
+      } else {
+        const title = data.presentation_title || "Apresentação";
+        resultInfo.textContent = title + " — pronta no Google Slides";
+        resultInfo.classList.remove("result-info-error");
+        openSlidesBtn.style.display = "";
+        openSheetsBtn.style.display = state.sheetsUrl ? "" : "none";
+      }
       if (resultReasoning) {
-        resultReasoning.textContent = state.reasoning || "";
-        resultReasoning.closest(".result-reasoning-wrap")?.classList.toggle("hidden", !state.reasoning);
+        resultReasoning.textContent = state.reasoning || "Nenhum raciocínio disponível.";
+        resultReasoning.closest(".result-reasoning-wrap")?.classList.remove("hidden");
       }
     }, 600);
   } catch (error) {
@@ -157,27 +568,40 @@ async function handleGenerate() {
 }
 
 let progressInterval = null;
-function simulateProgress() {
-  let progress = 0, currentStep = 1;
-  const titles = ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
+
+function simulateProgress(mode = "presentation") {
+  let progress = 0;
+  let currentStep = 1;
+  const titles = mode === "research"
+    ? ["Coletando dados...", "Consolidando informações...", "Gerando relatório...", "Finalizando..."]
+    : mode === "slides-prompt"
+      ? ["Analisando estrutura...", "Convertendo para slides...", "Criando apresentação...", "Finalizando..."]
+      : ["Analisando seu pedido...", "Pesquisando dados financeiros...", "Gerando conteúdo dos slides...", "Criando a apresentação..."];
   progressBar.style.width = "0%";
   updateSteps(1);
   progressTitle.textContent = titles[0];
   progressInterval = setInterval(() => {
     if (progress < 90) {
-      progress = Math.min(progress + Math.random() * 3 + 0.5, 90);
+      const increment = Math.random() * 3 + 0.5;
+      progress = Math.min(progress + increment, 90);
       progressBar.style.width = progress + "%";
       const newStep = Math.min(Math.floor(progress / 25) + 1, 4);
-      if (newStep !== currentStep) { currentStep = newStep; updateSteps(currentStep); progressTitle.textContent = titles[currentStep - 1]; }
+      if (newStep !== currentStep) {
+        currentStep = newStep;
+        updateSteps(currentStep);
+        progressTitle.textContent = titles[currentStep - 1];
+      }
     }
   }, 500);
 }
+
 function completeProgress() {
   clearInterval(progressInterval);
   progressBar.style.width = "100%";
   updateSteps(5);
   progressTitle.textContent = "Concluído!";
 }
+
 function updateSteps(activeStep) {
   progressSteps.querySelectorAll(".step").forEach((step) => {
     const stepNum = parseInt(step.dataset.step);
@@ -187,38 +611,85 @@ function updateSteps(activeStep) {
   });
 }
 
-downloadBtn.addEventListener("click", () => {
-  if (!state.resultBlob) return;
-  const url = URL.createObjectURL(state.resultBlob);
-  const a = document.createElement("a");
-  a.href = url; a.download = state.resultFilename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+openSlidesBtn.addEventListener("click", () => {
+  if (state.slidesUrl) window.open(state.slidesUrl, "_blank");
 });
+
+openSheetsBtn.addEventListener("click", () => {
+  if (state.sheetsUrl) window.open(state.sheetsUrl, "_blank");
+});
+
+openResearchSheetsBtn?.addEventListener("click", () => {
+  if (state.researchSheetsUrl) window.open(state.researchSheetsUrl, "_blank");
+});
+
+openReportBtn?.addEventListener("click", () => {
+  if (state.reportUrl) window.open(state.reportUrl, "_blank");
+});
+
+copyAnalysisBtn?.addEventListener("click", async () => {
+  if (!state.researchAnalysisSlides) return;
+  try {
+    await navigator.clipboard.writeText(state.researchAnalysisSlides);
+    const orig = copyAnalysisBtn.textContent;
+    copyAnalysisBtn.textContent = "Copiado!";
+    setTimeout(() => { copyAnalysisBtn.textContent = orig; }, 2000);
+  } catch {
+    copyAnalysisBtn.textContent = "Erro ao copiar";
+    setTimeout(() => { copyAnalysisBtn.textContent = "Copiar"; }, 2000);
+  }
+});
+
 newBtn.addEventListener("click", resetUI);
-retryBtn.addEventListener("click", () => { resetUI(); if (promptInput.value.trim()) handleGenerate(); });
+retryBtn.addEventListener("click", () => {
+  resetUI();
+  if (state.currentView === "presentation" && promptInput.value.trim()) {
+    handleGenerate();
+  } else if (state.currentView === "slides-prompt" && slidesPromptInput?.value?.trim()) {
+    handleSlidesPromptGenerate();
+  } else if (state.currentView === "market-research" && researchTopicInput?.value?.trim()) {
+    handleMarketResearchSubmit();
+  }
+});
+
 function resetUI() {
   showSection("form");
+  state.slidesUrl = null;
+  state.sheetsUrl = null;
+  state.researchSheetsUrl = null;
+  state.reportUrl = null;
+  state.researchAnalysisSlides = null;
   state.resultBlob = null;
   state.resultFilename = "";
   state.reasoning = "";
-  if (resultReasoning) {
-    resultReasoning.textContent = "";
-    resultReasoning.closest(".result-reasoning-wrap")?.classList.add("hidden");
-  }
+  if (resultReasoning) resultReasoning.textContent = "";
+  resultReasoning?.closest(".result-reasoning-wrap")?.classList.add("hidden");
+  openSlidesBtn.style.display = "";
+  openSheetsBtn.style.display = "none";
+  openResearchSheetsBtn && (openResearchSheetsBtn.style.display = "none");
+  openReportBtn && (openReportBtn.style.display = "none");
+  resultActionsPresentation?.classList.remove("hidden");
+  resultActionsResearch?.classList.add("hidden");
+  resultAnalysisWrap?.classList.add("hidden");
+  $(".result-title").textContent = "Apresentação Gerada";
+  newBtn.textContent = "Criar outra apresentação";
   clearInterval(progressInterval);
   progressBar.style.width = "0%";
   updateSteps(0);
+  setPresentationProgressSteps();
 }
 
 function showSection(section) {
+  sectionState = section;
   progressCard.classList.add("hidden");
   resultCard.classList.add("hidden");
   errorCard.classList.add("hidden");
-  const formElements = document.querySelectorAll(".prompt-card, .upload-card, .generate-btn");
-  if (section === "form") formElements.forEach((el) => el.classList.remove("hidden"));
-  else {
-    formElements.forEach((el) => el.classList.add("hidden"));
+  if (section === "form") {
+    showView(state.currentView);
+  } else {
+    viewPresentation?.classList.add("hidden");
+    viewSlidesPrompt?.classList.add("hidden");
+    viewMarketResearch?.classList.add("hidden");
     if (section === "progress") progressCard.classList.remove("hidden");
     else if (section === "result") resultCard.classList.remove("hidden");
     else if (section === "error") errorCard.classList.remove("hidden");
@@ -243,4 +714,9 @@ setInterval(checkApiStatus, 30000);
 promptInput.addEventListener("input", () => {
   promptInput.style.height = "auto";
   promptInput.style.height = Math.min(promptInput.scrollHeight, 300) + "px";
+});
+
+slidesPromptInput?.addEventListener("input", () => {
+  slidesPromptInput.style.height = "auto";
+  slidesPromptInput.style.height = Math.min(slidesPromptInput.scrollHeight, 600) + "px";
 });

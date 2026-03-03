@@ -47,12 +47,14 @@ Em alguns minutos o site ficará disponível em:
 
 ### 4. Conferir
 
-Abra essa URL no navegador. O frontend já está configurado para chamar:
+Abra essa URL no navegador. O frontend está configurado para chamar:
 
-`https://ggservices.app.n8n.cloud/webhook/generate-presentation`
+- **Nova Apresentação:** `https://ggservices.app.n8n.cloud/webhook/generate-presentation`
+- **Apresentação por Slides:** `https://ggservices.app.n8n.cloud/webhook/generate-presentation-from-slides`
+- **Pesquisa de Mercado:** `https://ggservices.app.n8n.cloud/webhook/market-research`
 
 Certifique-se de que o workflow **IB Presentation Agent** está **ativo** no N8N Cloud para o webhook responder.
 
 ---
 
-Para alterar a URL do webhook no futuro, edite a variável `webhookUrl` no arquivo `app.js`.
+Para alterar as URLs dos webhooks, edite o objeto `CONFIG` no arquivo `app.js` (webhookUrl, slidesPromptWebhookUrl, marketResearchWebhookUrl).
