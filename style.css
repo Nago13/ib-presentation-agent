@@ -628,6 +628,65 @@ body {
   display: none !important;
 }
 
+.result-analysis-wrap {
+  text-align: left;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.result-analysis-wrap.hidden {
+  display: none !important;
+}
+
+.result-analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.result-analysis-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy);
+  margin: 0;
+}
+
+.copy-analysis-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--border-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+.copy-analysis-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.result-analysis-text {
+  font-size: 12px;
+  font-family: ui-monospace, "Cascadia Code", "SF Mono", Monaco, monospace;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+
 .result-reasoning-title {
   font-size: 13px;
   font-weight: 600;

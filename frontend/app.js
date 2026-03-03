@@ -476,7 +476,7 @@ async function handleMarketResearchSubmit() {
       resultInfo.textContent = title + (state.researchSheetsUrl ? " — planilha consolidada pronta" : "");
       resultInfo.classList.remove("result-info-error");
       openResearchSheetsBtn.style.display = state.researchSheetsUrl ? "" : "none";
-      openReportBtn.style.display = state.reportUrl ? "" : "none";
+      openReportBtn.style.display = (state.reportUrl && state.reportUrl !== state.researchSheetsUrl) ? "" : "none";
       $(".result-title").textContent = "Pesquisa Concluída";
       newBtn.textContent = "Nova pesquisa";
       if (resultReasoning) {
