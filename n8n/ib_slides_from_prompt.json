@@ -55,10 +55,10 @@
     },
     {
       "parameters": {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama-3.1-8b-instant",
         "options": {
           "temperature": 0.2,
-          "maxTokensToSample": 32000
+          "maxTokensToSample": 65536
         }
       },
       "id": "node-groq-model",
@@ -115,7 +115,7 @@
     {
       "parameters": {
         "language": "javaScript",
-        "jsCode": "let reasoning = '';\nlet presentation_title = 'apresentacao';\ntry {\n  const slidesData = $('Extrair JSON dos Slides').first();\n  if (slidesData && slidesData.json) {\n    reasoning = slidesData.json.reasoning || '';\n    presentation_title = slidesData.json.presentation_title || 'apresentacao';\n  }\n} catch (e) {}\n\nconst item = $input.first();\nconst rawData = item.json || {};\nconst data = (rawData.body && typeof rawData.body === 'object') ? rawData.body : (rawData.data && typeof rawData.data === 'object') ? rawData.data : rawData;\n\nconst slides_url = data.slides_url || null;\nconst sheets_url = data.sheets_url || null;\n\nfunction getErrorMessage(d) {\n  if (!d || typeof d !== 'object') return null;\n  let s = d.detail || d.error || d.message || d.msg;\n  if (typeof s === 'string' && s.length > 0) return s;\n  if (d.error && typeof d.error === 'object' && typeof d.error.message === 'string') return d.error.message;\n  if (d.body) {\n    const b = typeof d.body === 'string' ? (() => { try { return JSON.parse(d.body); } catch(e) { return null; } })() : d.body;\n    if (b && typeof b.detail === 'string') return b.detail;\n    if (b && typeof b.error === 'string') return b.error;\n  }\n  if (d.json && typeof d.json.detail === 'string') return d.json.detail;\n  return null;\n}\n\nconst errMsg = getErrorMessage(data);\nconst fallback = 'Google Slides não gerado. Verifique as credenciais e o serviço.';\n\nif (!slides_url) {\n  return [{ json: {\n    slides_url: null,\n    sheets_url: null,\n    presentation_title,\n    reasoning,\n    error: errMsg || fallback\n  }}];\n}\n\nreturn [{ json: {\n  slides_url,\n  sheets_url,\n  presentation_title: data.presentation_title || presentation_title,\n  reasoning\n}}];"
+        "jsCode": "let reasoning = '';\nlet presentation_title = 'apresentacao';\ntry {\n  const slidesData = $('Extrair JSON dos Slides').first();\n  if (slidesData && slidesData.json) {\n    reasoning = slidesData.json.reasoning || '';\n    presentation_title = slidesData.json.presentation_title || 'apresentacao';\n  }\n} catch (e) {}\n\nconst item = $input.first();\nconst rawData = item.json || {};\nconst data = (rawData.body && typeof rawData.body === 'object') ? rawData.body : (rawData.data && typeof rawData.data === 'object') ? rawData.data : rawData;\n\nconst slides_url = data.slides_url || null;\nconst sheets_url = data.sheets_url || null;\n\nfunction getErrorMessage(d) {\n  if (!d || typeof d !== 'object') return null;\n  let s = d.detail || d.error || d.message || d.msg;\n  if (typeof s === 'string' && s.length > 0) return s;\n  if (d.error && typeof d.error === 'object' && typeof d.error.message === 'string') return d.error.message;\n  if (d.body) {\n    const b = typeof d.body === 'string' ? (() => { try { return JSON.parse(d.body); } catch(e) { return null; } })() : d.body;\n    if (b && typeof b.detail === 'string') return b.detail;\n    if (b && typeof b.error === 'string') return b.error;\n  }\n  if (d.json && typeof d.json.detail === 'string') return d.json.detail;\n  return null;\n}\n\nfunction sanitizeError(msg) {\n  if (!msg || typeof msg !== 'string') return msg;\n  const m = msg.toLowerCase();\n  if (m.includes('503') || m.includes('application loading') || m.includes('render') && m.includes('loading') || m.includes('<!doctype') || m.includes('<html')) {\n    return 'O serviço de apresentações está em inicialização (cold start). Aguarde 30-60 segundos e tente novamente.';\n  }\n  if (msg.length > 350 && (m.includes('<') || m.includes('base64'))) {\n    return msg.substring(0, 100).replace(/<[^>]*>/g, '').trim() + '... [resposta HTML truncada]';\n  }\n  return msg.length > 400 ? msg.substring(0, 400) + '...' : msg;\n}\n\nconst errMsg = sanitizeError(getErrorMessage(data));\nconst fallback = 'Google Slides não gerado. Verifique as credenciais e o serviço.';\n\nif (!slides_url) {\n  return [{ json: {\n    slides_url: null,\n    sheets_url: null,\n    presentation_title,\n    reasoning,\n    error: errMsg || fallback\n  }}];\n}\n\nreturn [{ json: {\n  slides_url,\n  sheets_url,\n  presentation_title: data.presentation_title || presentation_title,\n  reasoning\n}}];"
       },
       "id": "node-mount-response",
       "name": "Montar resposta webhook",
@@ -146,7 +146,7 @@
     },
     {
       "parameters": {
-        "content": "## Credencial necessária\n\n**Groq API** (groq.com)\nCrie credencial Groq API e configure no node \"Groq Llama 3.3\".\nSem ferramentas de pesquisa — apenas conversão de prompt em JSON.",
+        "content": "## Credencial e Modelo\n\n**Groq API** (groq.com)\nModelo: **llama-3.1-8b-instant** (max 131k tokens saída).\nAlternativas: llama-3.3-70b-versatile (32k), qwen3-32b (40k).\nEvite Maverick/Scout/Kimi (limite 8–16k).",
         "height": 160,
         "width": 320,
         "color": 6

@@ -661,6 +661,7 @@ body {
 }
 
 .result-sub.result-info-error {
+  word-break: break-word; overflow-wrap: break-word; max-width: 100%;
   color: var(--red);
   background: var(--red-bg);
   padding: 10px 14px;
@@ -839,6 +840,8 @@ body {
   margin-left: auto;
   margin-right: auto;
   line-height: 1.6;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .retry-btn {

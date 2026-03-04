@@ -249,6 +249,18 @@ generateBtn.addEventListener("click", handleGenerate);
 // Mode toggle (Agente pesquisa vs Eu defino slides)
 // ============================================
 
+function sanitizeDisplayError(msg) {
+  if (!msg || typeof msg !== "string") return String(msg || "Erro desconhecido");
+  const m = msg.toLowerCase();
+  if (m.includes("503") || m.includes("application loading") || m.includes("cold start")) {
+    return "O serviço está em inicialização. Aguarde 30-60 segundos e tente novamente.";
+  }
+  if (msg.length > 300 && (m.includes("<") || m.includes("base64"))) {
+    return msg.substring(0, 80).replace(/<[^>]*>/g, "").trim() + "… [resposta truncada]";
+  }
+  return msg.length > 350 ? msg.substring(0, 350) + "…" : msg;
+}
+
 function getPresentationMode() {
   return document.querySelector('input[name="presentation-mode"]:checked')?.value || "agent";
 }
@@ -664,7 +676,7 @@ async function handleGenerate() {
       $(".result-title").textContent = "Apresentação Gerada";
       newBtn.textContent = "Criar outra apresentação";
       if (responseError) {
-        resultInfo.textContent = "Erro: " + responseError;
+        resultInfo.textContent = "Erro: " + sanitizeDisplayError(responseError);
         resultInfo.classList.add("result-info-error");
         openSlidesBtn.style.display = "none";
         openSheetsBtn.style.display = "none";
